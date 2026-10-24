@@ -73,8 +73,8 @@ export class MotorSynth {
     }
   }
 
-  update(dt, v, load, contacts, vol = 1) {
-    const ctx = this.ctx, t = ctx.currentTime, P = this.P;
+  update(dt, v, load, contacts, vol = 1, at) {
+    const ctx = this.ctx, t = at ?? ctx.currentTime, P = this.P;
     this.air = contacts > 0 ? 0 : this.air + dt;
     const ground = !P.airMute || this.air < 0.25 ? 1 : 0;
     this.level = vol * ground * motorLevel(P, v, load);

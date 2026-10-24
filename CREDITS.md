@@ -15,7 +15,5 @@
   - tyre_skid_loop: audible-edge, https://freesound.org/people/audible-edge/sounds/71736/
   - tyre_roll_loop: orlandorizo, https://freesound.org/people/orlandorizo/sounds/591079/
   - wind_loop: kevinklang, https://freesound.org/people/kevinklang/sounds/841982/
-  - fan_server (suction fan): ladako, https://freesound.org/people/ladako/sounds/555309/
-  - impact_light: JoMungus /726486/, impact_medium: softwalls /449062/, impact_heavy: PauliusI /346301/ (first variants of the Roadster 88 catalog)
 - EV motor sound: Jurek's preset of the Roadster 88 motor synth.
 - Libraries: three.js (MIT), Rapier (Apache-2.0), Firebase JS SDK.

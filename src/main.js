@@ -24,7 +24,7 @@ import { Moves } from './avatar/moves.js';
 const qs = new URLSearchParams(location.search);
 const TOUCH = qs.has('touch') || matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } };
-const S = Object.assign({ assist: true, cam: 'chase', quality: 'auto', musicVol: 0.5, sfxVol: 0.9, sens: 1, name: '', music: true }, load('rj.settings'));
+const S = Object.assign({ assist: true, cam: 'chase', quality: 'auto', musicVol: 0.6, sfxVol: 0.9, sens: 1, name: '', music: true }, load('rj.settings'));
 const QUAL = qs.get('q') || (S.quality === 'auto' ? (TOUCH ? 'low' : 'auto') : S.quality);
 const LOW = QUAL === 'low', HIGHQ = QUAL === 'high';
 const Q = { simple: qs.get('simple') !== '0', low: LOW, lights: qs.get('lights') || (LOW ? 'low' : HIGHQ ? 'high' : 'mid'), shadow: LOW ? 1024 : 2048, msaa: qs.has('msaa') ? +qs.get('msaa') : LOW ? 0 : HIGHQ ? 4 : 2, dpr: qs.has('dpr') ? +qs.get('dpr') : Math.min(window.devicePixelRatio || 1, HIGHQ ? 1.5 : 1.25) };
@@ -65,7 +65,7 @@ const car = new CarSim(RAPIER, phys.world, TUNING, { position: START.p, yaw: STA
 car.flight.assist = S.assist;
 const carObj = { sim: car, view, curr: { pos: new THREE.Vector3(), quat: new THREE.Quaternion() } };
 const smoke = new Smoke(scene, Q);
-const input = new Input(canvas); input.isTouch = TOUCH;
+const input = new Input(canvas); input.isTouch = TOUCH; window.__rjInput = input;
 const touch = TOUCH ? new Touch(input) : null;
 const audio = new GameAudio(); audio.musicOn = S.music; audio.musicVol = S.musicVol; audio.sfxVol = S.sfxVol;
 const rig = new CameraRig(camera, TUNING, (o, d, l) => phys.castFrom(o, d, l)); rig.sens = S.sens; rig.mode = S.cam;
@@ -108,14 +108,14 @@ const events = { land: 0 };
 const session = { jumps: 0, total: 0 };
 let stopT = 0, lastHint = '';
 
-function setDoor(open) { door.target = open ? 1 : 0; audio.play(open ? 'door_open' : 'door_close', { gain: 0.7 }); }
+function setDoor(open) { door.target = open ? 1 : 0; audio.play(open ? 'door_open' : 'door_close', { gain: 0.6 }); }
 const poseBuf = new Float32Array(CarPose.SIZE);
 function syncPoses() { currP.fromSim(car, door.t); currP.write(poseBuf, 0); prevP.read(poseBuf, 0); carObj.curr.pos.set(car.pos.x, car.pos.y, car.pos.z); carObj.curr.quat.set(car.q.x, car.q.y, car.q.z, car.q.w); }
 syncPoses();
 
 const tricks = new Tricks((kind, d) => {
   if (kind === 'takeoff') { rec.mark('takeoff', simT, { fromCeil: d.fromCeil }); if (d.fromCeil) ev.LIP = simT; }
-  else if (kind === 'touch') { const k = clamp(d.v / 14, 0.1, 1); events.land = Math.max(events.land, k); audio.land(k); }
+  else if (kind === 'touch') events.land = Math.max(events.land, clamp(d.v / 14, 0.1, 1));
   else if (kind === 'land' || kind === 'crash') {
     rec.mark(kind, simT, { pos: { x: car.pos.x, z: car.pos.z } }); ev.LAND = simT; ramp.run = false;
     let nb = false;
@@ -150,7 +150,7 @@ function step(h) {
   if (walker.active && !moves.busy) { walker.step(h, mv, rig.footYaw); mv.jump = false; }
   phys.step();
   car.postStep(h);
-  phys.events.drainContactForceEvents((e) => { const f = e.totalForceMagnitude(); if (f > 120000 && car.contacts < 3) audio.land(clamp(f / 600000, 0.3, 1)); });
+  phys.events.drainContactForceEvents(() => {});
   currP.write(poseBuf, 0); prevP.read(poseBuf, 0);
   currP.fromSim(car, door.t);
   carObj.curr.pos.set(car.pos.x, car.pos.y, car.pos.z); carObj.curr.quat.set(car.q.x, car.q.y, car.q.z, car.q.w);
@@ -338,15 +338,14 @@ function render(dt, stepPhys = true) {
   const loc = rampLocate(P.p[0], P.p[1], P.p[2]);
   ev.carS = (replay.active ? loc.onDeck && (P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3]) > 0 : ramp.on) ? loc.s : null;
   A.update(te, camera.position, ev);
-  const cdist = camera.position.distanceTo(view.root.position);
-  const rel = view.root.position.clone().sub(camera.position).applyQuaternion(camera.quaternion.clone().invert());
-  audio.update(dt, P, { dist: cdist, pan: rel.x / Math.max(1, Math.hypot(rel.x, rel.z)), inside: inCar && rig.mode === 'fpp' && !replay.active, load: inCar && !replay.active ? car.load : 0 });
+  audio.update(dt, P, { cam: camera, rate: replay.active ? replay.speed() : 1, inside: inCar && rig.mode === 'fpp' && !replay.active, load: inCar && !replay.active ? car.load : 0 });
   if (inCar && rig.mode === 'fpp') view.screen.draw(P.speed / 0.44704, P.fan, S.assist);
   const pr = started ? promptText() : '';
   if (pr !== lastHint) { lastHint = pr; touch && touch.setEnter(/Get in/.test(pr) ? 'Get in' : /Get out/.test(pr) ? 'Get out' : null); }
   if (touch) touch.setFan(car.fan);
   if (started) ui.hud({ dt, mph: P.speed / 0.44704, fan: car.fan, assist: S.assist, cam: inCar ? rig.mode : 'foot', valves: P.valve, live: replay.active ? null : tricks.live(), prompt: TOUCH ? (/Suction/.test(pr) ? 'Suction is off. Tap F to stick to the wall' : '') : pr, session: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} · ${session.total.toLocaleString('en-US')} pts` : '', replay: replay.active ? { p: replay.progress(), mode: replay.mode } : null, touch: TOUCH, fps: qs.has('debug') ? `${Math.round(fpsBuf.length / Math.max(0.001, fpsBuf.reduce((a, b) => a + b, 0)))} fps · ${scale.toFixed(2)}x` : '' });
   const r0 = performance.now();
+  if (window.__rjNoDraw) { perf.rend = 0; return; }
   if (qs.get('post') === '0') { renderer.setRenderTarget(null); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.render(scene, camera); } else post.render(scene, camera, frameT);
   perf.rend = perf.rend * 0.95 + (performance.now() - r0) * 0.05;
 }
@@ -359,7 +358,7 @@ ui.loading(1, 'Ready');
 requestAnimationFrame(frame);
 function play() {
   started = true; ui.hideStart(); ui.showHud(true); touch && touch.show(true);
-  audio.unlock().then(() => audio.setVolumes(S.musicVol, S.sfxVol));
+  audio.unlock(TOUCH).then(() => audio.setVolumes(S.musicVol, S.sfxVol));
   if (!TOUCH) input.requestLock();
   ui.toast(inCar ? 'F suction · Shift boost · Space jets' : (TOUCH ? 'Walk to the Roadster and tap Get in' : 'Walk to the Roadster · E to get in'), 3.2);
 }
@@ -378,6 +377,29 @@ window.__rj = {
   manual: (on) => { window.__rjManual = on; },
   frame: (sec = 1 / 60, stepPhys = false) => { render(sec, stepPhys); },
   startReplay, stopReplay,
+  recordAudio: (sec) => new Promise((res) => { const st = audio.tap(); if (!st) return res(null); const rec = new MediaRecorder(st, { mimeType: 'audio/webm' }), chunks = []; rec.ondataavailable = (e) => chunks.push(e.data); rec.onstop = async () => { const b = new Blob(chunks, { type: 'audio/webm' }), r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b); }; rec.start(); setTimeout(() => rec.stop(), sec * 1000); }),
+  audio,
+  offlineAudio: async (script) => {
+    const SR = 44100, DUR = script.dur, off = new OfflineAudioContext(2, Math.ceil(SR * DUR), SR);
+    audio.ctx = null; audio.vt = 0; audio.loops = new Map(); audio.buf = new Map(); audio.songSrc = null;
+    await audio.unlock(false, off); audio.setVolumes(S.musicVol, S.sfxVol);
+    window.__rjManual = true; window.__rjNoDraw = !script.draw; started = true;
+    const marks = [];
+    for (let f = 0; f < DUR * 60; f++) {
+      audio.vt = f / 60;
+      const st = window.__rj.state();
+      const cmd = script.step(f / 60, st, window.__rj); if (cmd) marks.push([+(f / 60).toFixed(2), cmd]);
+      render(1 / 60, true);
+    }
+    const buf = await off.startRendering();
+    const n = buf.length, data = new Int16Array(n * 2), L = buf.getChannelData(0), R = buf.getChannelData(1);
+    for (let i = 0; i < n; i++) { data[i * 2] = Math.max(-1, Math.min(1, L[i])) * 32767; data[i * 2 + 1] = Math.max(-1, Math.min(1, R[i])) * 32767; }
+    const hdr = new DataView(new ArrayBuffer(44)), w = (o, str) => { for (let i = 0; i < str.length; i++) hdr.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); hdr.setUint32(4, 36 + data.byteLength, true); w(8, 'WAVE'); w(12, 'fmt '); hdr.setUint32(16, 16, true); hdr.setUint16(20, 1, true); hdr.setUint16(22, 2, true); hdr.setUint32(24, SR, true); hdr.setUint32(28, SR * 4, true); hdr.setUint16(32, 4, true); hdr.setUint16(34, 16, true); w(36, 'data'); hdr.setUint32(40, data.byteLength, true);
+    const blob = new Blob([hdr.buffer, data.buffer], { type: 'audio/wav' });
+    const url = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); });
+    return { url, marks };
+  },
   state: () => {
     const loc = rampLocate(car.pos.x, car.pos.y, car.pos.z);
     return { t: +simT.toFixed(3), pos: [car.pos.x, car.pos.y, car.pos.z].map((v) => +v.toFixed(2)), up: [car.up.x, car.up.y, car.up.z].map((v) => +v.toFixed(2)), speed: +car.speed.toFixed(2), contacts: car.contacts, onRamp: ramp.on, s: +loc.s.toFixed(2), fan: +car.fanSpool.toFixed(2), suck: Math.round(car.fanSuck), mode: car.flight.mode, trick: tricks.state, inCar, result: last.result };
