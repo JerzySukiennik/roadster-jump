@@ -166,7 +166,7 @@ export class CarView {
     });
     this.pose = new CarPose();
     { const c = tuning.car, S = tuning.suspension, wb = c.wheelbase / 2, g = tuning.gravity, fl = c.mass * g * ((wb + c.com[2]) / c.wheelbase) / 2, rl = (c.mass * g - fl * 2) / 2; this.stat = [fl / S.spring_front, fl / S.spring_front, rl / S.spring_rear, rl / S.spring_rear]; }
-    this.lightsOn = 1; this.cabin = false; this.onRamp = false; this.time = 0;
+    this.lightsOn = 1; this.cabin = false; this.onRamp = false; this.time = 0; this.doorR = 0; this.targa = 0;
     this._q = new THREE.Quaternion(); this._v = new THREE.Vector3(); this._w = new THREE.Vector3(); this._c = new THREE.Vector3(); this._m = new THREE.Matrix4();
   }
 
@@ -222,7 +222,8 @@ export class CarView {
     this.setClip('front_nozzles_deploy', P.extend);
     this.setClip('side_nozzles_deploy', P.side);
     this.setClip('flap_open', P.flap);
-    this.setClip('door_L_open', P.door); this.setClip('door_R_open', 0);
+    this.setClip('door_L_open', P.door); this.setClip('door_R_open', this.doorR || 0);
+    this.setClip('targa_remove', this.targa || 0);
     const on = this.lightsOn, M = this.mats;
     if (M.LED_Head) M.LED_Head.emissiveIntensity = this.base.head * (0.05 + 0.95 * on);
     if (M.LED_Tail) M.LED_Tail.emissiveIntensity = this.base.tail * (0.15 + 0.85 * on) * (1 + 1.4 * P.brake);

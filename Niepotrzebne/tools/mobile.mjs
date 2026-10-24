@@ -13,8 +13,11 @@ const t0 = Date.now();
 await p.goto('http://127.0.0.1:8840/');
 try { await p.waitForFunction(() => window.__rj && window.__rj.ready, null, {timeout: 240000}); } catch (e) { console.log('BOOT FAIL', logs.join('\n')); await p.screenshot({path: `${out}/fail.png`}); process.exit(1); }
 console.log('boot ms', Date.now() - t0, JSON.stringify(await p.evaluate(() => ({Q: window.__rj.Q, gl: (() => { const g = document.getElementById('view').getContext('webgl2'); return g ? g.getParameter(g.VERSION) : 'none'; })(), touch: document.body.classList.contains('touchdev')}))));
-await p.screenshot({path: `${out}/m0_start.png`});
-await p.tap('#play');
+await p.waitForFunction(() => document.getElementById('loader').classList.contains('hidden'), null, {timeout: 60000}).catch(() => {});
+await p.waitForTimeout(1200); await p.screenshot({path: `${out}/m0_start.png`});
+{ const [x, y] = await p.evaluate(async () => { const THREE = await import('three'); const R = window.__rj, v = new THREE.Box3().setFromObject(R.view.n.Door_L).getCenter(new THREE.Vector3()); v.project(R.showroom.camera); return [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; }); await p.touchscreen.tap(x, y); await p.waitForTimeout(1300); await p.screenshot({path: `${out}/m0b_tap_door.png`}); console.log('tap door', JSON.stringify(await p.evaluate(() => ({ hover: window.__rj.showroom.hover && window.__rj.showroom.hover.key, door: +window.__rj.showroom.st.doorL.toFixed(2) })))); }
+await p.waitForFunction(() => !document.getElementById('play').disabled, null, {timeout: 120000});
+await p.tap('#play'); await p.waitForTimeout(1800);
 await p.waitForTimeout(2500);
 await p.screenshot({path: `${out}/m1_foot.png`});
 await p.evaluate(() => { const R = window.__rj; R.board(); R.fan(true); });

@@ -21,9 +21,9 @@ export class Driver {
     this._a = V(); this._b = V(); this._c = V(); this._q = Q();
   }
 
-  async load(mobile, outfitIndex = 0) {
+  async load(mobile, outfitIndex = 0, onProgress) {
     this.gdir = mobile ? 'garments_mobile/' : 'garments/';
-    const gltf = await this.loader.loadAsync(BASE + (mobile ? 'character_mobile.glb' : 'character.glb'));
+    const gltf = await this.loader.loadAsync(BASE + (mobile ? 'character_mobile.glb' : 'character.glb'), onProgress);
     this.root = gltf.scene; this.root.name = 'Driver';
     this.bones = new Map();
     this.root.traverse((o) => { if (o.isBone) this.bones.set(o.name, o); });

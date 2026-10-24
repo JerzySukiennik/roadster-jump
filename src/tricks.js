@@ -29,7 +29,7 @@ export class Tricks {
       if (s.contacts === 0) {
         this.air += dt;
         this.roll += s.ang.z * dt; this.pitch += s.ang.x * dt; this.yaw += s.ang.y * dt;
-        this.maxH = Math.max(this.maxH, s.pos.y);
+        this.maxH = Math.max(this.maxH, s.pos.y); this.hNow = s.pos.y;
         if (s.assist) this.assistUsed = true;
         if (this.state === 'pending' && this.air > 0.35 && (this.maxH - Math.min(this.from.y, s.pos.y) > 1.2 || this.fromCeil)) { this.state = 'air'; this.on('takeoff', { fromCeil: this.fromCeil }); }
         this.vLand = s.vel.y;
@@ -54,7 +54,7 @@ export class Tricks {
 
   live() {
     if (this.state !== 'air' && this.state !== 'pending') return null;
-    return { roll: Math.abs(this.roll) * DEG, pitch: Math.abs(this.pitch) * DEG, yaw: Math.abs(this.yaw) * DEG, air: this.air, heel: this.roll < 0, back: this.pitch < 0 };
+    return { roll: Math.abs(this.roll) * DEG, pitch: Math.abs(this.pitch) * DEG, yaw: Math.abs(this.yaw) * DEG, air: this.air, heel: this.roll < 0, back: this.pitch < 0, h: Math.max(0, this.hNow || 0) };
   }
 
   score(ok, dist, s) {
@@ -74,8 +74,15 @@ export class Tricks {
     const quality = !ok ? 'Crash' : v < 4.5 && this.touchUp > 0.85 ? 'Perfect landing' : v < 9 ? 'Clean landing' : 'Hard landing';
     const qMul = !ok ? 0 : quality === 'Perfect landing' ? 1.5 : quality === 'Clean landing' ? 1.15 : 0.75;
     const pro = !this.assistUsed;
-    const base = rotDeg * 1.0 + this.air * 120 + dist * 12 + Math.min(this.ceilAtTakeoff, 20) * 40 + (this.fromCeil ? 250 : 0) + (bull < 6 ? 300 + 1200 * (1 - bull / 6) : 0);
+    const parts = [['Rotation', `${rotDeg}°`, rotDeg], ['Air time', `${this.air.toFixed(2)} s`, this.air * 120], ['Distance', `${dist.toFixed(1)} m`, dist * 12]];
+    if (this.ceilAtTakeoff > 0.2) parts.push(['Ceiling hang', `${this.ceilAtTakeoff.toFixed(1)} s`, Math.min(this.ceilAtTakeoff, 20) * 40]);
+    if (this.fromCeil) parts.push(['Ceiling launch', '', 250]);
+    if (bull < 6) parts.push(['Bullseye', `${bull.toFixed(1)} m`, 300 + 1200 * (1 - bull / 6)]);
+    const base = parts.reduce((a, p) => a + p[2], 0);
+    const mults = [];
+    if (ok && qMul !== 1) mults.push([quality, qMul]);
+    if (ok && pro) mults.push(['Assist off', 1.5]);
     const total = Math.round(base * qMul * (pro ? 1.5 : 1));
-    return { ok, names, quality, pro, rotDeg, air: this.air, dist, ceil: this.ceilAtTakeoff, maxH: this.maxH, total, landV: v, bull: bull < 6 ? bull : null };
+    return { ok, names, quality, pro, rotDeg, air: this.air, dist, ceil: this.ceilAtTakeoff, maxH: this.maxH, total, landV: v, bull: bull < 6 ? bull : null, parts: parts.map((p) => [p[0], p[1], Math.round(p[2])]), mults };
   }
 }

@@ -20,11 +20,13 @@ import { UI } from './ui.js';
 import { Driver } from './avatar/driver.js';
 import { Walker, PARKED } from './avatar/walker.js';
 import { Moves } from './avatar/moves.js';
+import { Showroom } from './showroom.js';
+import { Goals } from './goals.js';
 
 const qs = new URLSearchParams(location.search);
 const TOUCH = qs.has('touch') || matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } };
-const S = Object.assign({ assist: true, cam: 'chase', quality: 'auto', musicVol: 0.6, sfxVol: 0.9, sens: 1, name: '', music: true }, load('rj.settings'));
+const S = Object.assign({ assist: true, cam: 'chase', quality: 'auto', musicVol: 0.6, sfxVol: 0.9, sens: 1, name: '', music: true, goals: true }, load('rj.settings'));
 const QUAL = qs.get('q') || (S.quality === 'auto' ? (TOUCH ? 'low' : 'auto') : S.quality);
 const LOW = QUAL === 'low', HIGHQ = QUAL === 'high';
 const Q = { simple: qs.get('simple') !== '0', low: LOW, lights: qs.get('lights') || (LOW ? 'low' : HIGHQ ? 'high' : 'mid'), shadow: LOW ? 1024 : 2048, msaa: qs.has('msaa') ? +qs.get('msaa') : LOW ? 0 : HIGHQ ? 4 : 2, dpr: qs.has('dpr') ? +qs.get('dpr') : Math.min(window.devicePixelRatio || 1, HIGHQ ? 1.5 : 1.25) };
@@ -53,13 +55,16 @@ function resize() {
 addEventListener('resize', resize); resize();
 
 ui.loading(0.02, 'Loading physics');
+const driver = new Driver({});
+let avatarOk = true, avatarFrac = 0;
+const avatarLoad = driver.load(LOW, 0, (e) => { if (e.total) avatarFrac = e.loaded / e.total; }).then(() => driver.preloadMotion()).catch((e) => { avatarOk = false; console.warn('avatar failed', e); });
 await RAPIER.init();
 const phys = new Physics(RAPIER, TUNING);
 const rampHandles = new Set(phys.rampCols.map((c) => c.handle));
 ui.loading(0.08, 'Building the arena');
 const A = buildArena(scene, Q);
 ui.loading(0.12, 'Loading the Roadster');
-await loadCarAssets(LOW || qs.get('car') === 'lod1' ? 'assets/car/roadster_lod1.glb' : 'assets/car/roadster.glb', (e) => { if (e.total) ui.loading(0.12 + 0.38 * e.loaded / e.total, 'Loading the Roadster'); });
+await loadCarAssets(LOW || qs.get('car') === 'lod1' ? 'assets/car/roadster_lod1.glb' : 'assets/car/roadster.glb', (e) => { if (e.total) ui.loading(0.12 + 0.8 * e.loaded / e.total, `Loading the Roadster · ${(e.loaded / 1e6).toFixed(1)} / ${(e.total / 1e6).toFixed(1)} MB`); });
 const view = new CarView(scene, TUNING, Q);
 const car = new CarSim(RAPIER, phys.world, TUNING, { position: START.p, yaw: START.yaw });
 car.flight.assist = S.assist;
@@ -71,23 +76,20 @@ const audio = new GameAudio(); audio.musicOn = S.music; audio.musicVol = S.music
 const rig = new CameraRig(camera, TUNING, (o, d, l) => phys.castFrom(o, d, l)); rig.sens = S.sens; rig.mode = S.cam;
 const rec = new Recorder(), replay = new Replay(rec);
 const walker = new Walker(RAPIER, phys.world);
-const driver = new Driver({});
 const groundHeight = (x, z, from) => phys.castDown(x, z, from);
 const G = { driver, walker, scene, groundHeight, doorPulse: (c, open) => setDoor(open) };
 const moves = new Moves(G);
 
-ui.loading(0.52, 'Loading Jurek');
-let avatarOk = true;
-try { await driver.load(LOW, 0); driver.preloadMotion(); } catch (e) { avatarOk = false; console.warn('avatar failed', e); }
-ui.loading(0.9, 'Lighting');
+ui.loading(0.94, 'Lighting');
+for (let i = 0; i < 150; i++) { car.preStep(H, PARKED); phys.step(); car.postStep(H); }
 
 const ev = { RUN1: 1e9, TOP1: 1e9, HOLD1: 1e9, DOWN1: 1e9, RUN2: 1e9, LIP: 1e9, LAND: 1e9, carS: null };
 {
   const cube = new THREE.WebGLCubeRenderTarget(LOW ? 128 : 256, { type: THREE.HalfFloatType }), cc = new THREE.CubeCamera(0.5, 1500, cube);
-  cc.position.set(-6, 2.2, 3); view.root.visible = false; if (driver.root) driver.root.visible = false;
+  cc.position.set(-6, 2.2, 3); view.root.visible = false;
   A.update(30, cc.position, { ...ev, RUN2: 0, LIP: 4, LAND: 7 }); cc.update(renderer, scene);
   scene.environment = new THREE.PMREMGenerator(renderer).fromCubemap(cube.texture).texture;
-  view.root.visible = true; if (driver.root) driver.root.visible = true;
+  view.root.visible = true;
   A.update(0, camera.position, ev);
 }
 if (qs.has('hide')) { const H = qs.get('hide').split(','); scene.traverse((o) => { const m = o.material; const haze = m && m.uniforms && m.uniforms.uK; const ground = o.isMesh && o.geometry && o.geometry.parameters && o.geometry.parameters.width === 1400;
@@ -106,7 +108,10 @@ let mv = { x: 0, z: 0, run: false, jump: false };
 const ramp = { on: false, s: null, lastUpY: 1, lastOn: false, run: false, offT: 0 };
 const events = { land: 0 };
 const session = { jumps: 0, total: 0 };
-let stopT = 0, lastHint = '';
+let stopT = 0, lastHint = '', fly = null, viewShift = 1, frozen = false;
+const showroom = new Showroom({ view, camera, audio, touch: TOUCH });
+const SHOW_TGT = new THREE.Vector3(START.p[0], 0.62, START.p[2]);
+const goals = new Goals(S.goals, (text, all) => ui.toast(all ? 'All film stunts done' : `Stunt done · ${text}`, 2.2));
 
 function setDoor(open) { door.target = open ? 1 : 0; audio.play(open ? 'door_open' : 'door_close', { gain: 0.6 }); }
 const poseBuf = new Float32Array(CarPose.SIZE);
@@ -114,7 +119,7 @@ function syncPoses() { currP.fromSim(car, door.t); currP.write(poseBuf, 0); prev
 syncPoses();
 
 const tricks = new Tricks((kind, d) => {
-  if (kind === 'takeoff') { rec.mark('takeoff', simT, { fromCeil: d.fromCeil }); if (d.fromCeil) ev.LIP = simT; }
+  if (kind === 'takeoff') { rec.mark('takeoff', simT, { fromCeil: d.fromCeil }); if (d.fromCeil) { ev.LIP = simT; goals.hit('launch'); } }
   else if (kind === 'touch') events.land = Math.max(events.land, clamp(d.v / 14, 0.1, 1));
   else if (kind === 'land' || kind === 'crash') {
     rec.mark(kind, simT, { pos: { x: car.pos.x, z: car.pos.z } }); ev.LAND = simT; ramp.run = false;
@@ -122,7 +127,13 @@ const tricks = new Tricks((kind, d) => {
     if (d.ok) {
       session.jumps++; session.total += d.total;
       nb = online.improves('score', d.total);
-      online.submit(S.name, { score: d.total, dist: Math.round(d.dist * 10) / 10, spin: d.rotDeg });
+      online.submit(S.name, { score: d.total, dist: Math.round(d.dist * 10) / 10, spin: d.rotDeg }).then(async (changed) => {
+        if (!changed.includes('score') || !S.name) return;
+        const rows = await online.top('score', 50), i = rows ? rows.findIndex((r) => r.uid === online.uid) : -1;
+        if (i >= 0) ui.rank(`#${i + 1} on the Best jump leaderboard`);
+      });
+      if (d.names.some((n) => /flip \d/.test(n) && /Kick|Heel/.test(n))) goals.hit('kick');
+      if (d.bull !== null) goals.hit('bull');
     }
     ui.result(d, nb);
     last.result = d;
@@ -161,6 +172,8 @@ function step(h) {
   ramp.s = on && loc ? loc.s : null;
   if (on && loc.s > 0.5 && car.fwdSpeed > 4 && !ramp.run) { ramp.run = true; ev.RUN2 = simT; ev.LIP = 1e9; ev.LAND = 1e9; rec.mark('ramp', simT); }
   if (!on && car.contacts >= 2) { ramp.offT += h; if (ramp.offT > 1.5 && tricks.state === 'ground') ramp.run = false; } else ramp.offT = 0;
+  if (on && car.up.y < -0.9 && car.contacts >= 3) goals.hit('ceil');
+  if (tricks.ceil >= 5) goals.hit('hang');
   tricks.update(h, { contacts: car.contacts, onRamp: on, up: car.up, pos: car.pos, vel: car.vel, ang: car.angLocal, assist: S.assist, lastRampUpY: ramp.lastUpY, lastOnRamp: ramp.lastOn });
   if (++stepN % 2 === 0) rec.push(simT, currP);
   simT += h;
@@ -190,6 +203,7 @@ function board() {
   if (driver.root) driver.attach(view.seatRoot, false);
   rig.mode = S.cam; rig.cut(); applyCabin();
   door.close = 1.1;
+  if (started) goals.hit('in');
   if (started && !car.fan) ui.toast(TOUCH ? 'Tap F for suction, then drive up the ramp' : 'F for suction, then drive up the ramp', 3);
 }
 
@@ -229,10 +243,15 @@ function stopReplay() { replay.stop(); smoke.clear(); rig.cut(); applyCabin(); }
 
 function toggleMenu(on) {
   if (!started) return;
-  paused = on; ui.menu(on); touch && touch.show(!on);
+  paused = on; frozen = false; ui.menu(on, { sub: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} this session · ${session.total.toLocaleString('en-US')} pts` : 'No jumps yet this session' }); touch && touch.show(!on);
   if (!on && !TOUCH) input.requestLock();
 }
-ui.onResume = () => toggleMenu(false);
+ui.onResume = () => { if (started) toggleMenu(false); else ui.menu(false); };
+ui.onOpenMenu = (tab) => ui.menu(true, { tab, title: 'Roadster Jump', sub: 'Settings, leaderboards and controls', resume: 'Close' });
+ui.onReset = () => { toggleMenu(false); reset(); };
+ui.onReplay = () => { toggleMenu(false); startReplay(); };
+ui.onGoals = (v) => goals.setVisible(v);
+ui.onShowMode = (m) => showroom.setMode(m);
 ui.onAssist = (v) => { ui.toast(v ? 'Flight assist on' : 'Flight assist off · ×1.5 points', 1.6); };
 ui.onCam = (v) => { if (inCar) { rig.mode = v; rig.cut(); applyCabin(); } };
 ui.onVolume = () => audio.setVolumes(S.musicVol, S.sfxVol);
@@ -242,7 +261,8 @@ canvas.addEventListener('click', () => { if (started && !paused && !TOUCH) input
 
 function actions(dt) {
   const I = input;
-  if (I.hit('Escape')) { if (TOUCH || !input.locked) toggleMenu(!paused); }
+  if (I.hit('Escape')) { if (!started) { if (ui.menuOpen) ui.menu(false); } else if (TOUCH || !input.locked) toggleMenu(!paused); }
+  if (!started) return;
   if (paused) return;
   if (replay.active) {
     if (I.hit('KeyP') || I.hit('Escape')) stopReplay();
@@ -251,7 +271,8 @@ function actions(dt) {
     return;
   }
   if (I.hit('KeyE')) { if (inCar) tryExit(); else tryEnter(); }
-  if (I.hit('KeyF') && inCar) { car.fan = !car.fan; ui.toast(car.fan ? 'Suction on' : 'Suction off', 1.2); }
+  if (I.hit('KeyF') && inCar) { car.fan = !car.fan; ui.toast(car.fan ? 'Suction on' : 'Suction off', 1.2); if (car.fan) goals.hit('fan'); }
+  if (I.hit('KeyG')) { S.goals = !S.goals; ui.save(); ui.syncGoals(); goals.setVisible(S.goals); }
   if (I.hit('KeyC') && inCar) { const order = ['chase', 'level', 'fpp']; S.cam = order[(order.indexOf(S.cam) + 1) % 3]; ui.save(); rig.mode = S.cam; rig.cut(); applyCabin(); }
   if (I.hit('KeyR')) reset();
   if (I.hit('KeyP')) startReplay();
@@ -277,9 +298,9 @@ const fpsBuf = []; let fpsT = 0, scaleT = 0, lastNow = performance.now();
 const perf = { cpu: 0, phys: 0, smoke: 0, rend: 0 };
 function frame(now) {
   requestAnimationFrame(frame);
-  if (window.__rjManual) { lastNow = now; return; }
+  if (window.__rjManual || (paused && frozen)) { lastNow = now; return; }
   const dt = Math.min(0.1, (now - lastNow) / 1000); lastNow = now; frameT += dt;
-  const c0 = performance.now(); render(dt); const cpu = performance.now() - c0; perf.cpu = perf.cpu * 0.95 + cpu * 0.05;
+  const c0 = performance.now(); render(dt); frozen = paused; const cpu = performance.now() - c0; perf.cpu = perf.cpu * 0.95 + cpu * 0.05;
   fpsBuf.push(dt); if (fpsBuf.length > 90) fpsBuf.shift();
   scaleT += dt;
   if (scaleT > 2 && fpsBuf.length >= 60 && started && !qs.has('fixscale')) {
@@ -294,8 +315,9 @@ function render(dt, stepPhys = true) {
   actions(dt);
   const [mx, my, wh] = input.consumeMouse();
   if (replay.active && replay.mode === 'free') { replay.orbit.yaw -= mx * 0.004; replay.orbit.pitch = clamp(replay.orbit.pitch + my * 0.004, -0.15, 1.3); replay.orbit.dist = clamp(replay.orbit.dist * (1 + wh * 0.1), 3, 40); }
-  else rig.mouse(mx, my);
-  if (wh && rig.mode === 'foot') rig.footDist = clamp(rig.footDist * (1 + wh * 0.1), 2, 8);
+  else if (!showroom.active) rig.mouse(mx, my);
+  if (showroom.active && wh) showroom.onWheel(wh);
+  if (wh && rig.mode === 'foot' && !showroom.active) rig.footDist = clamp(rig.footDist * (1 + wh * 0.1), 2, 8);
   if (stepPhys && started && !paused && !replay.active) {
     const m = input.move(); m.jump = m.jump || mv.jump; mv = m;
     acc += dt; let n = 0; const p0 = performance.now();
@@ -309,12 +331,15 @@ function render(dt, stepPhys = true) {
   stopT = inCar && car.speed < 0.5 ? stopT + dt : 0;
   let P;
   const scrub = replay.active && replay.mode === 'free' ? ((input.is('ArrowRight') ? 1 : 0) - (input.is('ArrowLeft') ? 1 : 0)) * dt * 2.5 : 0;
-  if (replay.active) P = replay.step(paused ? 0 : dt, scrub);
+  if (showroom.active) P = showroom.update(dt, poseBuf);
+  else if (replay.active) P = replay.step(paused ? 0 : dt, scrub);
   else { drawP.lerp(prevP, currP, acc / H); drawP.door = door.t; P = drawP; }
   { const lp = rampLocate(P.p[0], P.p[1], P.p[2]); view.onRamp = lp.onDeck && lp.s > 1.5 && lp.h < 2.5; }
   view.apply(P, dt);
+  if (showroom.active) showroom.afterApply();
   view.root.updateMatrixWorld(true);
-  if (driver.ready) {
+  if (driver.ready && showroom.active && !fly) driver.root.visible = false;
+  else if (driver.ready) {
     if (replay.active) { if (!walker.active || inCar) { if (driver.root.parent !== view.seatRoot) driver.attach(view.seatRoot, false); driver.pose(view.driverView, dt, {}); } else driver.root.visible = false; }
     else {
       driver.root.visible = true;
@@ -323,13 +348,23 @@ function render(dt, stepPhys = true) {
       else { if (driver.root.parent !== view.seatRoot) driver.attach(view.seatRoot, false); driver.pose(view.driverView, dt, {}); }
     }
   }
-  if (replay.active) replay.camera(camera, dt, P);
+  if (showroom.active && !fly) { showroom.camPose(SHOW_TGT, camera.position); camera.up.set(0, 1, 0); camera.lookAt(SHOW_TGT); if (camera.fov !== 34) { camera.fov = 34; } }
+  else if (replay.active) replay.camera(camera, dt, P);
   else if (!inCar && (walker.active || moves.busy)) rig.foot(dt, moves.busy ? moves.w.pose : walker.pose);
   else {
     const pos = new THREE.Vector3(P.p[0], P.p[1], P.p[2]), quat = new THREE.Quaternion(P.q[0], P.q[1], P.q[2], P.q[3]);
     rig.car(dt, { pos, quat, vel: new THREE.Vector3(P.vx, P.vy, P.vz), contacts: P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3], fwdSpeed: car.fwdSpeed, eye: view.eye(new THREE.Vector3()) });
   }
-  camera.near = rig.mode === 'fpp' && inCar && !replay.active ? 0.03 : 0.08; camera.updateProjectionMatrix();
+  if (fly) {
+    fly.t += dt; const u = Math.min(1, fly.t / fly.dur), e = u * u * u * (u * (u * 6 - 15) + 10);
+    camera.position.lerpVectors(fly.pos, camera.position, e); camera.quaternion.slerpQuaternions(fly.quat, camera.quaternion, e); camera.fov = fly.fov + (camera.fov - fly.fov) * e;
+    viewShift = 1 - e;
+    if (u >= 1) { fly = null; showroom.finish(); viewShift = 0; }
+  }
+  const sx = (TOUCH ? 0.12 : 0.17) * viewShift;
+  if (sx > 0.001) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * sx, 0, innerWidth, innerHeight); else if (camera.view && camera.view.enabled) camera.clearViewOffset();
+  camera.near = rig.mode === 'fpp' && inCar && !replay.active && !showroom.active ? 0.03 : 0.08; camera.updateProjectionMatrix();
+  if (showroom.active && !fly) { const lab = showroom.label(); ui.tip(!!lab && !ui.menuOpen, showroom.pointer.x, showroom.pointer.y, lab && lab[0], lab && lab[1]); }
   view.updateJets(camera, P);
   dynLights[0].pos.copy(view.jetLight.getWorldPosition(new THREE.Vector3()));
   view.heads[0].getWorldPosition(dynLights[1].wpos); dynLights[1].wdir.copy(view.heads[0].target.getWorldPosition(new THREE.Vector3())).sub(dynLights[1].wpos).normalize();
@@ -338,35 +373,54 @@ function render(dt, stepPhys = true) {
   const loc = rampLocate(P.p[0], P.p[1], P.p[2]);
   ev.carS = (replay.active ? loc.onDeck && (P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3]) > 0 : ramp.on) ? loc.s : null;
   A.update(te, camera.position, ev);
-  audio.update(dt, P, { cam: camera, rate: replay.active ? replay.speed() : 1, inside: inCar && rig.mode === 'fpp' && !replay.active, load: inCar && !replay.active ? car.load : 0 });
+  if (audio.ctx || !showroom.active) audio.update(dt, P, { cam: camera, rate: replay.active ? replay.speed() : 1, inside: inCar && rig.mode === 'fpp' && !replay.active, load: inCar && !replay.active ? car.load : 0 });
   if (inCar && rig.mode === 'fpp') view.screen.draw(P.speed / 0.44704, P.fan, S.assist);
   const pr = started ? promptText() : '';
   if (pr !== lastHint) { lastHint = pr; touch && touch.setEnter(/Get in/.test(pr) ? 'Get in' : /Get out/.test(pr) ? 'Get out' : null); }
   if (touch) touch.setFan(car.fan);
-  if (started) ui.hud({ dt, mph: P.speed / 0.44704, fan: car.fan, assist: S.assist, cam: inCar ? rig.mode : 'foot', valves: P.valve, live: replay.active ? null : tricks.live(), prompt: TOUCH ? (/Suction/.test(pr) ? 'Suction is off. Tap F to stick to the wall' : '') : pr, session: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} · ${session.total.toLocaleString('en-US')} pts` : '', replay: replay.active ? { p: replay.progress(), mode: replay.mode } : null, touch: TOUCH, fps: qs.has('debug') ? `${Math.round(fpsBuf.length / Math.max(0.001, fpsBuf.reduce((a, b) => a + b, 0)))} fps · ${scale.toFixed(2)}x` : '' });
+  if (started) ui.hud({ dt, mph: P.speed / 0.44704, gear: !inCar ? 'P' : car.gear === 'R' ? 'R' : car.parkedT > 1.2 ? 'P' : 'D', spool: car.fanSpool, hang: !replay.active && ramp.on && car.up.y < -0.7 ? tricks.ceil : 0, fan: car.fan, assist: S.assist, cam: inCar ? rig.mode : 'foot', valves: P.valve, live: replay.active ? null : tricks.live(), prompt: TOUCH ? (/Suction/.test(pr) ? 'Suction is off. Tap F to stick to the wall' : '') : pr, session: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} · ${session.total.toLocaleString('en-US')} pts` : '', replay: replay.active ? { p: replay.progress(), mode: replay.mode } : null, touch: TOUCH, fps: qs.has('debug') ? `${Math.round(fpsBuf.length / Math.max(0.001, fpsBuf.reduce((a, b) => a + b, 0)))} fps · ${scale.toFixed(2)}x` : '' });
   const r0 = performance.now();
   if (window.__rjNoDraw) { perf.rend = 0; return; }
   if (qs.get('post') === '0') { renderer.setRenderTarget(null); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.render(scene, camera); } else post.render(scene, camera, frameT);
   perf.rend = perf.rend * 0.95 + (performance.now() - r0) * 0.05;
 }
 
-if (avatarOk) spawnFoot(); else { inCar = true; rig.mode = S.cam; }
-applyCabin();
-ui.loading(0.96, 'Compiling shaders');
+canvas.addEventListener('pointerdown', (e) => {
+  if (!showroom.active || showroom.ending || ui.menuOpen) return;
+  showroom.onDown(e.clientX, e.clientY); try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* capture unsupported */ }
+  if (!audio.ctx) audio.unlock(TOUCH).then(() => { audio.setVolumes(S.musicVol, S.sfxVol); if (showroom.mode === 'play') document.getElementById('showHint').textContent = TOUCH ? 'Tap a part. Drag to turn it.' : 'Hover the car. Drag to turn it.'; });
+});
+canvas.addEventListener('pointermove', (e) => { if (showroom.active) showroom.onMove(e.clientX, e.clientY); });
+canvas.addEventListener('pointerup', () => { if (showroom.active) showroom.onUp(); });
+canvas.addEventListener('pointerleave', (e) => { if (showroom.active && e.pointerType === 'mouse') showroom.onLeave(); });
+
 for (const on of [true, false]) { view.jetLight.visible = on; try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); } catch (e) { /* compile on first frame */ } }
 ui.loading(1, 'Ready');
+showroom.start(); ui.showTitle(); ui.playProgress(0.05, 'Loading Jurek');
+document.getElementById('showHint').textContent = TOUCH ? 'Tap a part. Drag to turn it.' : 'Hover the car. Drag to turn it. Click for sound.';
 requestAnimationFrame(frame);
-function play() {
+ui.loaderDone();
+const progT = setInterval(() => ui.playProgress(0.05 + avatarFrac * 0.85, `Loading Jurek ${Math.round(5 + avatarFrac * 85)}%`), 120);
+await avatarLoad;
+clearInterval(progT);
+if (avatarOk) spawnFoot(); else { inCar = true; rig.mode = S.cam; }
+applyCabin();
+ui.playProgress(0.95, 'Preparing');
+try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); } catch (e) { /* compile on first frame */ }
+function play(o = {}) {
+  if (started) return;
   started = true; ui.hideStart(); ui.showHud(true); touch && touch.show(true);
   audio.unlock(TOUCH).then(() => audio.setVolumes(S.musicVol, S.sfxVol));
-  if (!TOUCH) input.requestLock();
+  if (!TOUCH && !o.instant) input.requestLock();
+  showroom.end(); rig.cut(); rig.fov = camera.fov;
+  if (o.instant) { showroom.finish(); viewShift = 0; } else fly = { t: 0, dur: 1.6, pos: camera.position.clone(), quat: camera.quaternion.clone(), fov: camera.fov };
   ui.toast(inCar ? 'F suction · Shift boost · Space jets' : (TOUCH ? 'Walk to the Roadster and tap Get in' : 'Walk to the Roadster · E to get in'), 3.2);
 }
 ui.ready(play);
 
 window.__rj = {
-  ready: true, perf, Q, car, phys, view, rec, replay, tricks, ui, S, ev, ramp, driver, walker,
-  play: () => { window.__rjTest = true; play(); },
+  ready: true, perf, showroom, goals, Q, car, phys, view, rec, replay, tricks, ui, S, ev, ramp, driver, walker,
+  play: () => { window.__rjTest = true; play({ instant: true }); },
   board: () => { if (!inCar) { moves.cur = null; door.target = 0; board(); } },
   input: (o) => { input.override = o ? { throttle: 0, brake: 0, steer: 0, boost: false, lift: false, pitch: 0, roll: 0, ...o } : null; },
   fan: (on) => { car.fan = on; },
@@ -383,7 +437,7 @@ window.__rj = {
     const SR = 44100, DUR = script.dur, off = new OfflineAudioContext(2, Math.ceil(SR * DUR), SR);
     audio.ctx = null; audio.vt = 0; audio.loops = new Map(); audio.buf = new Map(); audio.songSrc = null;
     await audio.unlock(false, off); audio.setVolumes(S.musicVol, S.sfxVol);
-    window.__rjManual = true; window.__rjNoDraw = !script.draw; started = true;
+    window.__rjManual = true; window.__rjNoDraw = !script.draw; window.__rjTest = true; play({ instant: true });
     const marks = [];
     for (let f = 0; f < DUR * 60; f++) {
       audio.vt = f / 60;
