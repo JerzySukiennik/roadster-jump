@@ -9,7 +9,7 @@ const b = await chromium.launch({executablePath: '/Applications/Google Chrome.ap
 const p = await b.newPage({viewport: {width: 1280, height: 720}});
 const logs = []; p.on('pageerror', (e) => logs.push('err ' + e.message + ' ' + (e.stack || '').slice(0, 300))); p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(m.type() + ' ' + m.text().slice(0, 200)); });
 const shot = (n) => p.screenshot({path: `${out}/${n}.jpg`, type: 'jpeg', quality: 85});
-await p.goto('http://127.0.0.1:8840/' + qy);
+await p.goto((process.env.URL || 'http://127.0.0.1:8840/') + qy);
 await p.waitForTimeout(1800); await shot('a0_loader');
 await p.waitForFunction(() => window.__rj && window.__rj.showroom && window.__rj.showroom.active, null, {timeout: 180000}).catch(() => {});
 await p.waitForFunction(() => document.getElementById('loader').classList.contains('hidden'), null, {timeout: 60000}).catch(() => {});
