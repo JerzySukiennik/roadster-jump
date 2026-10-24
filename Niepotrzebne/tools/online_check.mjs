@@ -13,7 +13,11 @@ const r = await p.evaluate(async (mode) => {
   let sub = null;
   if (mode === 'write') { o.best = {}; try { sub = await o.submit('TestBot', { score: 1, dist: 0.1, spin: 1 }); } catch (e) { sub = String(e); } }
   const top2 = await o.top('score', 5);
-  return { ok, uid: o.uid, top, sub, top2, err: o.err ? String(o.err.message || o.err) : null };
+  let cheat = null; try { await o.db.set(o.db.ref(o.d, `roadsterJump/scores/score/${o.uid}`), { n: 'TestBot', v: 999999, t: Date.now() }); cheat = 'accepted'; } catch (e) { cheat = 'rejected: ' + e.message; }
+  let other = null; try { await o.db.set(o.db.ref(o.d, `roadsterJump/scores/score/someoneElse`), { n: 'X', v: 5, t: Date.now() }); other = 'accepted'; } catch (e) { other = 'rejected'; }
+  let del = null; if (mode === 'write') { try { for (const b of ['score', 'dist', 'spin']) await o.db.remove(o.db.ref(o.d, `roadsterJump/scores/${b}/${o.uid}`)); del = 'removed'; } catch (e) { del = 'remove failed ' + e.message; } }
+  const top3 = await o.top('score', 5);
+  return { ok, uid: o.uid, top, sub, top2, cheat, other, del, top3, err: o.err ? String(o.err.message || o.err) : null };
 }, process.argv[2] || 'read');
 console.log(JSON.stringify(r, null, 1));
 await b.close();

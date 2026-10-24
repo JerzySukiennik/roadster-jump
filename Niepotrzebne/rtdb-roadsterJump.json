@@ -1,0 +1,16 @@
+{
+  "scores": {
+    "$board": {
+      ".read": "auth != null && ($board === 'score' || $board === 'dist' || $board === 'spin')",
+      ".indexOn": ["v"],
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && ($board === 'score' || $board === 'dist' || $board === 'spin')",
+        ".validate": "newData.hasChildren(['n', 'v', 't']) && (!data.exists() || newData.child('v').val() >= data.child('v').val())",
+        "n": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16" },
+        "v": { ".validate": "newData.isNumber() && newData.val() > 0 && (($board === 'score' && newData.val() <= 200000) || ($board === 'dist' && newData.val() <= 400) || ($board === 'spin' && newData.val() <= 20000))" },
+        "t": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
+        "$other": { ".validate": false }
+      }
+    }
+  }
+}
