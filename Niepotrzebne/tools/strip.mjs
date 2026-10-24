@@ -11,7 +11,7 @@ const p = await b.newPage({viewport: {width: 800, height: 450}});
 p.on('pageerror', e => console.log('err', e.message));
 await p.goto(`http://127.0.0.1:8840/?q=${q}`);
 await p.waitForFunction(() => window.__rj && window.__rj.ready, null, {timeout: 180000});
-await p.evaluate(([cam]) => { const R = window.__rj; R.manual(true); R.play(); R.board(); R.fan(true); R.cam(cam); R.car.teleport([-10.5, 0.05, 0], Math.PI / 2, 0); R.sim(0.6); }, [cam]);
+await p.evaluate(([cam, x0, v0]) => { const R = window.__rj; R.manual(true); R.play(); R.board(); R.fan(true); R.car.fanSpool = 1; R.cam(cam); R.car.teleport([x0, 0.05, 0], Math.PI / 2, v0); R.sim(0.05); }, [cam, +(process.env.X0 || -10.5), +(process.env.V0 || 0)]);
 await p.evaluate(([thr, boost]) => window.__rj.input({throttle: +thr, boost: boost === '1'}), [thr, boost]);
 const files = []; let k = 0, phase = 'ramp', tLand = null;
 for (let f = 0; f < 60 * 14; f++) {

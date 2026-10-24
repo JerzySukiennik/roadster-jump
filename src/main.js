@@ -160,6 +160,7 @@ function step(h) {
   car.preStep(h, inp);
   if (walker.active && !moves.busy) { walker.step(h, mv, rig.footYaw); mv.jump = false; }
   phys.step();
+  rampFollow();
   car.postStep(h);
   phys.events.drainContactForceEvents(() => {});
   currP.write(poseBuf, 0); prevP.read(poseBuf, 0);
@@ -178,6 +179,26 @@ function step(h) {
   if (++stepN % 2 === 0) rec.push(simT, currP);
   simT += h;
   if (car.pos.y < -30 || Math.abs(car.pos.x) > 1100 || Math.abs(car.pos.z) > 1100) reset();
+}
+
+const CURV = (s) => (s > 0 && s < RAMP.S1 ? 1 / RAMP.R1 : s > RAMP.S2 && s < RAMP.S3 ? 1 / RAMP.R2 : 0);
+const _rf = { q: new THREE.Quaternion(), up: new THREE.Vector3(), n: new THREE.Vector3(), t: new THREE.Vector3(), v: new THREE.Vector3(), c: new THREE.Vector3() };
+function rampFollow() {
+  const b = car.body, p = b.translation(), loc = rampLocate(p.x, p.y, p.z), F = _rf;
+  const r = b.rotation(); F.q.set(r.x, r.y, r.z, r.w); F.up.set(0, 1, 0).applyQuaternion(F.q);
+  F.n.set(loc.nx, loc.ny, 0); const align = F.up.dot(F.n);
+  const band = loc.s > 0.15 && loc.s < RAMP.S4 - 0.35 && Math.abs(p.z) < RAMP.W / 2 - 0.15 && loc.h > -0.7 && loc.h < (car.ghost ? 1.2 : 0.6) && align > 0.55;
+  car.ghostRamp(band);
+  if (!band) return;
+  const HMIN = -0.08, lv = b.linvel(), v = F.v.set(lv.x, lv.y, lv.z);
+  F.t.set(Math.cos(loc.a), Math.sin(loc.a), 0);
+  if (loc.h < HMIN) b.setTranslation({ x: p.x + F.n.x * (HMIN - loc.h), y: p.y + F.n.y * (HMIN - loc.h), z: p.z }, true);
+  const vn = v.dot(F.n), vt = v.dot(F.t);
+  if (loc.h < HMIN + 0.02 && vn < 0) { const vt2 = (vt < 0 ? -1 : 1) * Math.sqrt(vt * vt + vn * vn); b.setLinvel({ x: F.t.x * vt2, y: F.t.y * vt2, z: v.z }, true); }
+  if (Math.abs(vt) > 12 || loc.h < HMIN + 0.01) {
+    const err = Math.atan2(F.c.crossVectors(F.up, F.n).z, align), av = b.angvel();
+    b.setAngvel({ x: av.x, y: av.y, z: CURV(loc.s) * vt + err * 18 }, true);
+  }
 }
 
 function reset() {

@@ -3,7 +3,7 @@ import { V3, Quat, clamp, smoothstep, moveTowards, DEG, MPH, yawOf } from './mat
 import { Thrusters } from './thrusters.js';
 import { FlightComputer } from './flight.js';
 
-export const GROUP = { STATIC: 0x0001, CAR: 0x0002, WALKER: 0x0010 };
+export const GROUP = { STATIC: 0x0001, CAR: 0x0002, WALKER: 0x0010, RAMP: 0x0040 };
 export const groups = (member, filter) => ((member & 0xffff) << 16) | (filter & 0xffff);
 export const WHEEL_NAMES = ['Wheel_FL', 'Wheel_FR', 'Wheel_RL', 'Wheel_RR'];
 
@@ -44,7 +44,7 @@ export class CarSim {
     for (const [pts, fric] of [[h.body, 0.45], [h.cabin, 0.4]]) {
       let d = R.ColliderDesc.convexHull(pts);
       if (!d) d = R.ColliderDesc.cuboid(0.98, 0.3, 2.0).setTranslation(0, 0.55, 0);
-      d.setDensity(0).setFriction(fric).setRestitution(0.08).setCollisionGroups(groups(GROUP.CAR, GROUP.STATIC | GROUP.WALKER))
+      d.setDensity(0).setFriction(fric).setRestitution(0.08).setCollisionGroups(groups(GROUP.CAR, GROUP.STATIC | GROUP.WALKER | GROUP.RAMP))
         .setActiveEvents(R.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(4000);
       const col = world.createCollider(d, this.body);
       col.userData = { kind: 'car', car: this };
@@ -98,6 +98,12 @@ export class CarSim {
     this.speed = this.vel.len(); this.fwdSpeed = this.vel.dot(this.fwd); this.latSpeed = this.vel.dot(this.left);
   }
 
+  ghostRamp(on) {
+    if (this.ghost === on) return;
+    this.ghost = on;
+    for (const c of this.colliders) c.setCollisionGroups(groups(GROUP.CAR, GROUP.STATIC | GROUP.WALKER | (on ? 0 : GROUP.RAMP)));
+  }
+
   toWorld(local, out) { return out.copy(local).applyQuat(this.q).add(this.pos); }
 
   setRay(o, d) {
@@ -147,7 +153,7 @@ export class CarSim {
       const o = this.toWorld(w.local, this._b);
       this.setRay(o, dir);
       const maxLen = S.rest_length + w.r + 0.6;
-      const hit = world.castRayAndGetNormal(this.ray, maxLen, true, undefined, groups(GROUP.CAR, GROUP.STATIC), undefined, this.body);
+      const hit = world.castRayAndGetNormal(this.ray, maxLen, true, undefined, groups(GROUP.CAR, GROUP.STATIC | GROUP.RAMP), undefined, this.body);
       w.prevCompression = w.compression;
       const toi = hit ? hit.timeOfImpact : maxLen;
       w.groundDist = toi - w.r - S.rest_length;
@@ -167,7 +173,7 @@ export class CarSim {
     }
     this.gap = minClear;
     this.setRay(this.comW, this._f.set(0, -1, 0));
-    const down = world.castRay(this.ray, 120, true, undefined, groups(GROUP.CAR, GROUP.STATIC), undefined, this.body);
+    const down = world.castRay(this.ray, 120, true, undefined, groups(GROUP.CAR, GROUP.STATIC | GROUP.RAMP), undefined, this.body);
     this.clearance = this.contacts ? minClear : down ? Math.max(0, down.timeOfImpact - this.comLocal.y) : 120;
     const forces = [0, 0, 0, 0];
     for (const w of this.wheels) {
@@ -361,7 +367,7 @@ export class CarSim {
       d.copy(n.dir).scale(-1).applyQuat(this.q);
       if (d.y > -0.2) continue;
       this.setRay(o, d);
-      const hit = this.world.castRay(this.ray, 12, true, undefined, groups(GROUP.CAR, GROUP.STATIC), undefined, this.body);
+      const hit = this.world.castRay(this.ray, 12, true, undefined, groups(GROUP.CAR, GROUP.STATIC | GROUP.RAMP), undefined, this.body);
       if (hit) {
         n.groundDist = hit.timeOfImpact;
         if (hit.timeOfImpact < ge.height) n.groundGain = 1 + ge.boost * (1 - hit.timeOfImpact / ge.height) * -d.y;

@@ -26,7 +26,7 @@ export class Walker {
     const R = this.R;
     if (!this.body) {
       this.body = this.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y + HALF + RADIUS, z));
-      this.collider = this.world.createCollider(R.ColliderDesc.capsule(HALF, RADIUS).setCollisionGroups(groups(GROUP.WALKER, GROUP.STATIC | GROUP.CAR)).setFriction(0.6), this.body);
+      this.collider = this.world.createCollider(R.ColliderDesc.capsule(HALF, RADIUS).setCollisionGroups(groups(GROUP.WALKER, GROUP.STATIC | GROUP.CAR | GROUP.RAMP)).setFriction(0.6), this.body);
       this.collider.userData = { kind: 'walker' };
     }
     this.body.setEnabled(true);
@@ -66,7 +66,7 @@ export class Walker {
     const fallV = this.vel.y;
     const t = this.body.translation();
     const desired = { x: this.vel.x * dt, y: this.vel.y * dt, z: this.vel.z * dt };
-    this.ctl.computeColliderMovement(this.collider, desired, undefined, groups(GROUP.WALKER, GROUP.STATIC | GROUP.CAR));
+    this.ctl.computeColliderMovement(this.collider, desired, undefined, groups(GROUP.WALKER, GROUP.STATIC | GROUP.CAR | GROUP.RAMP));
     const m = this.ctl.computedMovement();
     const nx = t.x + m.x, ny = t.y + m.y, nz = t.z + m.z;
     this.body.setNextKinematicTranslation({ x: nx, y: ny, z: nz });

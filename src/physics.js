@@ -13,7 +13,7 @@ export class Physics {
     const W = this.world, sg = this.staticGroups;
     const ground = W.createCollider(R.ColliderDesc.cuboid(1200, 1, 1200).setTranslation(0, -1, 0).setFriction(1.0).setCollisionGroups(sg));
     ground.userData = { kind: 'ground' };
-    this.rampCols = buildRampColliders(R, W, sg);
+    this.rampCols = buildRampColliders(R, W, groups(GROUP.RAMP, GROUP.CAR | GROUP.WALKER));
     this.box = (cx, cy, cz, hx, hy, hz, yaw = 0, kind = 'prop') => {
       const d = R.ColliderDesc.cuboid(hx, hy, hz).setTranslation(cx, cy, cz).setFriction(0.7).setCollisionGroups(sg);
       if (yaw) d.setRotation({ x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) });
@@ -52,13 +52,13 @@ export class Physics {
 
   castDown(x, z, from, maxLen = 400) {
     const r = this.ray; r.origin.x = x; r.origin.y = from; r.origin.z = z; r.dir.x = 0; r.dir.y = -1; r.dir.z = 0;
-    const h = this.world.castRay(r, maxLen, true, undefined, groups(GROUP.WALKER, GROUP.STATIC));
+    const h = this.world.castRay(r, maxLen, true, undefined, groups(GROUP.WALKER, GROUP.STATIC | GROUP.RAMP));
     return h ? from - h.timeOfImpact : null;
   }
 
   castFrom(o, d, len) {
     const r = this.ray; r.origin.x = o.x; r.origin.y = o.y; r.origin.z = o.z; r.dir.x = d.x; r.dir.y = d.y; r.dir.z = d.z;
-    const h = this.world.castRay(r, len, true, undefined, groups(GROUP.WALKER, GROUP.STATIC));
+    const h = this.world.castRay(r, len, true, undefined, groups(GROUP.WALKER, GROUP.STATIC | GROUP.RAMP));
     return h ? h.timeOfImpact : null;
   }
 }
