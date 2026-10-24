@@ -16,18 +16,18 @@ export class CarPose {
     this.p = new Float32Array(3); this.q = new Float32Array([0, 0, 0, 1]);
     this.spin = new Float32Array(4); this.len = new Float32Array(4); this.slip = new Float32Array(4); this.contact = new Float32Array(4);
     this.steer = new Float32Array(2); this.dir = new Float32Array(30); this.valve = new Float32Array(10); this.ground = new Float32Array(10);
-    this.steerAngle = 0; this.extend = 0; this.flap = 0; this.side = 0; this.brake = 0; this.door = 0; this.fan = 0; this.speed = 0; this.vx = 0; this.vy = 0; this.vz = 0;
+    this.steerAngle = 0; this.extend = 0; this.flap = 0; this.side = 0; this.brake = 0; this.door = 0; this.fan = 0; this.speed = 0; this.vx = 0; this.vy = 0; this.vz = 0; this.vid = 0;
   }
-  static get SIZE() { return 7 + 4 * 4 + 2 + 30 + 10 + 10 + 11; }
+  static get SIZE() { return 7 + 4 * 4 + 2 + 30 + 10 + 10 + 12; }
   write(a, o) {
     a.set(this.p, o); a.set(this.q, o + 3); a.set(this.spin, o + 7); a.set(this.len, o + 11); a.set(this.slip, o + 15); a.set(this.contact, o + 19);
     a.set(this.steer, o + 23); a.set(this.dir, o + 25); a.set(this.valve, o + 55); a.set(this.ground, o + 65);
-    const e = o + 75; a[e] = this.steerAngle; a[e + 1] = this.extend; a[e + 2] = this.flap; a[e + 3] = this.side; a[e + 4] = this.brake; a[e + 5] = this.door; a[e + 6] = this.fan; a[e + 7] = this.speed; a[e + 8] = this.vx; a[e + 9] = this.vy; a[e + 10] = this.vz;
+    const e = o + 75; a[e] = this.steerAngle; a[e + 1] = this.extend; a[e + 2] = this.flap; a[e + 3] = this.side; a[e + 4] = this.brake; a[e + 5] = this.door; a[e + 6] = this.fan; a[e + 7] = this.speed; a[e + 8] = this.vx; a[e + 9] = this.vy; a[e + 10] = this.vz; a[e + 11] = this.vid;
   }
   read(a, o) {
     this.p.set(a.subarray(o, o + 3)); this.q.set(a.subarray(o + 3, o + 7)); this.spin.set(a.subarray(o + 7, o + 11)); this.len.set(a.subarray(o + 11, o + 15)); this.slip.set(a.subarray(o + 15, o + 19)); this.contact.set(a.subarray(o + 19, o + 23));
     this.steer.set(a.subarray(o + 23, o + 25)); this.dir.set(a.subarray(o + 25, o + 55)); this.valve.set(a.subarray(o + 55, o + 65)); this.ground.set(a.subarray(o + 65, o + 75));
-    const e = o + 75; this.steerAngle = a[e]; this.extend = a[e + 1]; this.flap = a[e + 2]; this.side = a[e + 3]; this.brake = a[e + 4]; this.door = a[e + 5]; this.fan = a[e + 6]; this.speed = a[e + 7]; this.vx = a[e + 8]; this.vy = a[e + 9]; this.vz = a[e + 10];
+    const e = o + 75; this.steerAngle = a[e]; this.extend = a[e + 1]; this.flap = a[e + 2]; this.side = a[e + 3]; this.brake = a[e + 4]; this.door = a[e + 5]; this.fan = a[e + 6]; this.speed = a[e + 7]; this.vx = a[e + 8]; this.vy = a[e + 9]; this.vz = a[e + 10]; this.vid = a[e + 11];
     return this;
   }
   lerp(a, b, t) {
@@ -38,11 +38,13 @@ export class CarPose {
     l = Math.sqrt(l) || 1; for (let i = 0; i < 4; i++) this.q[i] /= l;
     const k = t < 0.5 ? a : b;
     for (const f of ['spin', 'len', 'slip', 'contact', 'steer', 'dir', 'valve', 'ground']) this[f].set(k[f]);
+    this.vid = k.vid;
     for (let i = 0; i < 4; i++) this.spin[i] = a.spin[i] + (b.spin[i] - a.spin[i]) * t;
     for (const f of ['steerAngle', 'extend', 'flap', 'side', 'brake', 'door', 'fan', 'speed', 'vx', 'vy', 'vz']) this[f] = a[f] + (b[f] - a[f]) * t;
     return this;
   }
-  fromSim(sim, door) {
+  fromSim(sim, door, vid = 0) {
+    this.vid = vid;
     this.p[0] = sim.pos.x; this.p[1] = sim.pos.y; this.p[2] = sim.pos.z;
     this.q[0] = sim.q.x; this.q[1] = sim.q.y; this.q[2] = sim.q.z; this.q[3] = sim.q.w;
     sim.wheels.forEach((w, i) => { this.spin[i] = w.spin; this.len[i] = w.length; this.slip[i] = w.contact ? w.slipVel : 0; this.contact[i] = w.contact ? 1 : 0; });

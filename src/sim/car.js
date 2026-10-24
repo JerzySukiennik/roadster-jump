@@ -1,9 +1,9 @@
-// Roadster Jump car simulation (adapted from Roadster 88): Rapier rigid body with raycast suspension along the car's own down axis (so it works on the curl ramp, the wall and the ceiling), slip-based combined tyre model with implicit wheel spin, AWD powertrain (TC, ABS, regen), aero, the suction fan that presses the car onto any surface it faces, and the thruster flight computer. Pure JS, Rapier is injected.
+// Roadster Jump car simulation (adapted from Roadster 88): Rapier rigid body with raycast suspension along the car's own down axis (so it works on the curl ramp, the wall and the ceiling), slip-based combined tyre model with implicit wheel spin, AWD powertrain (TC, ABS, regen), aero, the suction fan that presses the car onto any surface it faces, and the thruster flight computer; the same sim drives the lineup Teslas as plain cars (no jets or suction, their own hulls, asymmetric axles, allowed to sleep while parked). Pure JS, Rapier is injected.
 import { V3, Quat, clamp, smoothstep, moveTowards, DEG, MPH, yawOf } from './math.js';
 import { Thrusters } from './thrusters.js';
 import { FlightComputer } from './flight.js';
 
-export const GROUP = { STATIC: 0x0001, CAR: 0x0002, WALKER: 0x0010, RAMP: 0x0040 };
+export const GROUP = { STATIC: 0x0001, CAR: 0x0002, WALKER: 0x0010, RAMP: 0x0040, PROP: 0x0080 };
 export const groups = (member, filter) => ((member & 0xffff) << 16) | (filter & 0xffff);
 export const WHEEL_NAMES = ['Wheel_FL', 'Wheel_FR', 'Wheel_RL', 'Wheel_RR'];
 
@@ -36,15 +36,16 @@ export class CarSim {
     this.inertia = { pitch: c.inertia.pitch, yaw: c.inertia.yaw, roll: c.inertia.roll };
     const p = opts.position || [0, 0.05, 0], yaw = opts.yaw || 0;
     const q0 = new Quat().setFromYaw(yaw);
-    const bd = R.RigidBodyDesc.dynamic().setTranslation(p[0], p[1], p[2]).setRotation({ x: q0.x, y: q0.y, z: q0.z, w: q0.w }).setCcdEnabled(true).setCanSleep(false);
+    this.jets = opts.jets !== false;
+    const bd = R.RigidBodyDesc.dynamic().setTranslation(p[0], p[1], p[2]).setRotation({ x: q0.x, y: q0.y, z: q0.z, w: q0.w }).setCcdEnabled(true).setCanSleep(!!opts.canSleep);
     this.body = world.createRigidBody(bd);
     this.body.setAdditionalMassProperties(c.mass, { x: c.com[0], y: c.com[1], z: c.com[2] }, { x: c.inertia.pitch, y: c.inertia.yaw, z: c.inertia.roll }, { x: 0, y: 0, z: 0, w: 1 }, true);
     this.colliders = [];
-    const h = carHull(tuning);
-    for (const [pts, fric] of [[h.body, 0.45], [h.cabin, 0.4]]) {
+    const h = carHull(tuning), hulls = opts.hull ? opts.hull.map((pts) => [pts, 0.45]) : [[h.body, 0.45], [h.cabin, 0.4]];
+    for (const [pts, fric] of hulls) {
       let d = R.ColliderDesc.convexHull(pts);
       if (!d) d = R.ColliderDesc.cuboid(0.98, 0.3, 2.0).setTranslation(0, 0.55, 0);
-      d.setDensity(0).setFriction(fric).setRestitution(0.08).setCollisionGroups(groups(GROUP.CAR, GROUP.STATIC | GROUP.WALKER | GROUP.RAMP))
+      d.setDensity(0).setFriction(fric).setRestitution(0.08).setCollisionGroups(groups(GROUP.CAR, GROUP.STATIC | GROUP.WALKER | GROUP.RAMP | GROUP.PROP | GROUP.CAR))
         .setActiveEvents(R.ActiveEvents.CONTACT_FORCE_EVENTS).setContactForceEventThreshold(4000);
       const col = world.createCollider(d, this.body);
       col.userData = { kind: 'car', car: this };
@@ -52,8 +53,8 @@ export class CarSim {
     }
     this.thrusters = new Thrusters(tuning);
     this.flight = new FlightComputer(tuning, this.thrusters);
-    const wb = c.wheelbase / 2, g = tuning.gravity;
-    const frontLoad = c.mass * g * ((wb + this.comLocal.z) / c.wheelbase) / 2, rearLoad = c.mass * g - frontLoad * 2;
+    const wb = c.wheelbase / 2, g = tuning.gravity, az = c.axle_z || [wb, -wb];
+    const frontLoad = c.mass * g * clamp((this.comLocal.z - az[1]) / (az[0] - az[1]), 0.2, 0.8) / 2, rearLoad = c.mass * g - frontLoad * 2;
     this.N0 = c.mass * g / 4;
     this.wheels = WHEEL_NAMES.map((name, i) => {
       const front = i < 2, left = i % 2 === 0;
@@ -62,7 +63,7 @@ export class CarSim {
       const load = front ? frontLoad : rearLoad / 2;
       const xs = load / k;
       const x = (left ? 1 : -1) * (front ? c.track_front : c.track_rear) / 2;
-      const z = front ? wb : -wb;
+      const z = front ? az[0] : az[1];
       return {
         name, i, front, left, r, k, arb: front ? S.antiroll_front : S.antiroll_rear,
         local: new V3(x, r + S.rest_length - xs, z), staticCompression: xs, inertia: W.inertia_each,
@@ -101,7 +102,7 @@ export class CarSim {
   ghostRamp(on) {
     if (this.ghost === on) return;
     this.ghost = on;
-    for (const c of this.colliders) c.setCollisionGroups(groups(GROUP.CAR, GROUP.STATIC | GROUP.WALKER | (on ? 0 : GROUP.RAMP)));
+    for (const c of this.colliders) c.setCollisionGroups(groups(GROUP.CAR, GROUP.STATIC | GROUP.WALKER | GROUP.PROP | GROUP.CAR | (on ? 0 : GROUP.RAMP)));
   }
 
   toWorld(local, out) { return out.copy(local).applyQuat(this.q).add(this.pos); }
@@ -153,7 +154,7 @@ export class CarSim {
       const o = this.toWorld(w.local, this._b);
       this.setRay(o, dir);
       const maxLen = S.rest_length + w.r + 0.6;
-      const hit = world.castRayAndGetNormal(this.ray, maxLen, true, undefined, groups(GROUP.CAR, GROUP.STATIC | GROUP.RAMP), undefined, this.body);
+      const hit = world.castRayAndGetNormal(this.ray, maxLen, true, undefined, groups(GROUP.CAR, GROUP.STATIC | GROUP.RAMP | GROUP.CAR), undefined, this.body);
       w.prevCompression = w.compression;
       const toi = hit ? hit.timeOfImpact : maxLen;
       w.groundDist = toi - w.r - S.rest_length;
@@ -389,8 +390,7 @@ export class CarSim {
     this.powertrain(dt, inp);
     this.tyres(dt);
     this.aero();
-    this.suction(dt);
-    this.thrust(dt, inp);
+    if (this.jets) { this.suction(dt); this.thrust(dt, inp); }
     const J = this._a.copy(this.forceAcc).scale(dt), Jt = this._b.copy(this.torqueAcc).scale(dt);
     this.body.applyImpulse({ x: J.x, y: J.y, z: J.z }, true);
     this.body.applyTorqueImpulse({ x: Jt.x, y: Jt.y, z: Jt.z }, true);

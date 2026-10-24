@@ -1,4 +1,4 @@
-// Roadster Jump arena (from Film14): night tarmac, the white C-curl ramp with addressable red edge LEDs, a steel gantry with a moving-head rig, LED bar, red grandstand, floodlight towers, a parked semi, painted X lines and an event-driven light show.
+// Roadster Jump arena (from Film14): night tarmac, the white C-curl ramp with addressable red edge LEDs, a steel gantry with a moving-head rig, LED bar, red grandstand, floodlight towers, a parked semi, painted X lines and an event-driven light show; the loose pieces (rig cases, floor moving heads, barrier segments, poles, work lights, the semi) are grouped and listed in A.props so physics can knock them over.
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {RAMP, rampAt} from './ramp.js';
@@ -42,7 +42,8 @@ const DOWN = V(0, -1, 0);
 const lampGrid = (r, seg, nx, ny, x0, dx, y0, dy, z) => { const gs = []; for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) gs.push(new THREE.CircleGeometry(r, seg).translate(x0 + i * dx, y0 + j * dy, z)); return mergeGeometries(gs); };
 
 export function buildArena(scene, Q = {}) {
-  const A = {lights: [], update: null};
+  const A = {lights: [], update: null, props: []};
+  const prop = (g, shapes, mass) => { A.props.push({g, shapes, mass}); return g; };
   const HIGH = Q.lights !== 'low', SHADOW = Q.shadow || 1024;
   const TIER = {high: ['key', 'land', 'ceil', 'pad', 'flood0', 'flood1', 'flood2', 'rig0', 'rig1'], mid: ['key', 'land', 'ceil', 'pad', 'flood1'], low: ['key', 'land', 'ceil']}, MID = Q.lights === 'mid', real = k => (TIER[Q.lights] || TIER.mid).includes(k);
   const fake = I => Object.assign(new THREE.Object3D(), {intensity: I, target: new THREE.Object3D(), isFake: true});
@@ -173,14 +174,19 @@ void main(){
   for (const sz of [-1, 1]) { const s = new THREE.Mesh(new THREE.BoxGeometry(uX1 - uX0, 0.06, 0.09), redLedM); s.position.set((uX0 + uX1) / 2, 0.03, sz * uZ); scene.add(s); }
   { const s = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 2 * uZ), redLedM); s.position.set(uX1, 0.03, 0); scene.add(s); }
   const caseM = new THREE.MeshStandardMaterial({color: 0x45474b, roughness: 0.55, metalness: 0.4});
-  for (const sz of [-1, 1]) { const c = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.55, 0.6), caseM); c.position.set(0.2, 0.275, sz * (uZ - 0.5)); c.castShadow = true; c.receiveShadow = true; scene.add(c);
-    const s = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.06), redLedM); s.position.set(0.2, 0.56, sz * (uZ - 0.22)); scene.add(s); }
+  for (const sz of [-1, 1]) { const g = new THREE.Group(); g.position.set(0.2, 0.275, sz * (uZ - 0.5)); scene.add(g);
+    const c = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.55, 0.6), caseM); c.castShadow = true; c.receiveShadow = true; g.add(c);
+    const s = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.06), redLedM); s.position.set(0, 0.285, sz * 0.28); g.add(s);
+    prop(g, [['box', 0.7, 0.275, 0.3, 0, 0, 0]], 60); }
 
   const fxM = new THREE.MeshStandardMaterial({color: 0x17181b, roughness: 0.5, metalness: 0.6});
   const fixtures = [];
   function fixture(pos, len, half, col, kind, i) {
-    const base = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 0.42), fxM); base.position.copy(pos).add(V(0, kind === 'ground' ? 0.11 : 0, 0)); scene.add(base);
-    const g = new THREE.Group(); g.position.copy(pos).add(V(0, kind === 'ground' ? 0.42 : 0.3, 0)); scene.add(g);
+    const loose = kind === 'ground', holder = loose ? new THREE.Group() : scene, o = loose ? V(pos.x, 0.38, pos.z) : V();
+    if (loose) { holder.position.copy(o); scene.add(holder); }
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.22, 0.42), fxM); base.position.copy(pos).add(V(0, loose ? 0.11 : 0, 0)).sub(o); holder.add(base);
+    const g = new THREE.Group(); g.position.copy(pos).add(V(0, loose ? 0.42 : 0.3, 0)).sub(o); holder.add(g);
+    if (loose) prop(holder, [['box', 0.22, 0.38, 0.22, 0, 0, 0]], 28);
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.46, 14).translate(0, -0.1, 0), fxM); g.add(body);
     const lensM = new THREE.MeshBasicMaterial({color: 0x000000}), lens = new THREE.Mesh(new THREE.CircleGeometry(0.15, 16).rotateX(PI / 2), lensM); lens.position.y = -0.335; g.add(lens);
     const hm = hazeMat(col, 0.9), cone = new THREE.Mesh(coneGeo(len, 0.13, len * Math.tan(half)), hm); cone.position.y = -0.34; cone.renderOrder = 4; cone.frustumCulled = false; g.add(cone);
@@ -286,20 +292,29 @@ void main(){ float xn = vR.x, row = vR.y, v = vR.z;
     const bed = new THREE.Mesh(new THREE.BoxGeometry(6, 0.35, 2.5), dark); bed.position.set(9.6, 1.05, 0); g.add(bed);
     for (const x of [1.4, 5.2, 6.5, 10.6, 11.9]) for (const sz of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.36, 18).rotateX(PI / 2), dark); w.position.set(x, 0.52, sz * 1.12); g.add(w); }
     const hl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.06, 2.2), new THREE.MeshBasicMaterial({color: new THREE.Color(3, 3, 3.2)})); hl.position.set(0.1, 1.42, 0); g.add(hl);
-    g.position.set(-56, 0, -12); g.rotation.y = 2.6; scene.add(g); A.truck = g; }
-  { const jb = new THREE.Mesh(new THREE.BoxGeometry(40, 0.8, 0.5), new THREE.MeshStandardMaterial({color: 0x3a3b3e, roughness: 0.9})); jb.position.set(-44, 0.4, 27); jb.receiveShadow = true; scene.add(jb);
-    const st = new THREE.Mesh(new THREE.BoxGeometry(40, 0.07, 0.06), redLedM); st.position.set(-44, 0.62, 26.73); scene.add(st);
-    for (const x of [-64.5, -23.5]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 8), poleM); p.position.set(x, 0.8, 27); scene.add(p); const b = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), redLedM); b.position.set(x, 1.65, 27); scene.add(b); } }
+    g.position.set(-56, 0, -12); g.rotation.y = 2.6; scene.add(g); A.truck = g;
+    prop(g, [['box', 3.45, 1.95, 1.3, 3.4, 1.95, 0], ['box', 3.1, 0.62, 1.26, 9.4, 0.62, 0]], 9000); }
+  { const jbM = new THREE.MeshStandardMaterial({color: 0x3a3b3e, roughness: 0.9});
+    for (let k = 0; k < 8; k++) { const g = new THREE.Group(); g.position.set(-64 + 2.5 + k * 5, 0.4, 27); scene.add(g);
+      const jb = new THREE.Mesh(new THREE.BoxGeometry(4.96, 0.8, 0.5), jbM); jb.receiveShadow = true; jb.castShadow = true; g.add(jb);
+      const st = new THREE.Mesh(new THREE.BoxGeometry(4.96, 0.07, 0.06), redLedM); st.position.set(0, 0.22, -0.27); g.add(st);
+      prop(g, [['box', 2.48, 0.4, 0.25, 0, 0, 0]], 3500); }
+    for (const x of [-64.5, -23.5]) { const g = new THREE.Group(); g.position.set(x, 0, 27); scene.add(g);
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 8), poleM); p.position.y = 0.8; g.add(p); const b = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), redLedM); b.position.y = 1.65; g.add(b);
+      prop(g, [['cyl', 0.8, 0.07, 0, 0.8, 0]], 12); } }
   { const lampM = new THREE.MeshBasicMaterial({color: new THREE.Color(6, 3.6, 1.6)}), workM = new THREE.MeshBasicMaterial({color: new THREE.Color(3, 3, 3.2)});
-    for (let i = 0; i < 7; i++) { const x = -86 + i * 15, z = 94 + 3 * hash(i * 3.1);
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 9, 8), poleM); p.position.set(x, 4.5, z); scene.add(p);
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.6), poleM); arm.position.set(x, 9, z - 0.7); scene.add(arm);
-      const l = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), lampM); l.position.set(x, 8.92, z - 1.4); scene.add(l); }
+    for (let i = 0; i < 7; i++) { const g = new THREE.Group(); g.position.set(-86 + i * 15, 0, 94 + 3 * hash(i * 3.1)); scene.add(g);
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.13, 9, 8), poleM); p.position.y = 4.5; g.add(p);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1.6), poleM); arm.position.set(0, 9, -0.7); g.add(arm);
+      const l = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), lampM); l.position.set(0, 8.92, -1.4); g.add(l);
+      prop(g, [['cyl', 4.5, 0.13, 0, 4.5, 0], ['box', 0.25, 0.08, 0.8, 0, 8.95, -0.95]], 140); }
     for (let i = 0; i < 4; i++) { const g = new THREE.Group(); g.position.set(-64 + i * 9, 0, 30 + 2 * hash(i * 5.3)); scene.add(g);
-      const pl = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 6), poleM); pl.position.y = 0.7; g.add(pl); const b = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), redLedM); b.position.y = 1.45; g.add(b); }
+      const pl = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4, 6), poleM); pl.position.y = 0.7; g.add(pl); const b = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), redLedM); b.position.y = 1.45; g.add(b);
+      prop(g, [['cyl', 0.72, 0.08, 0, 0.72, 0]], 8); }
     for (let i = 0; i < 5; i++) { const g = new THREE.Group(); g.position.set(-70 + i * 14 + 5 * hash(i * 7.7), 0, 36 + 4 * hash(i * 2.9)); scene.add(g);
       const st = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.2, 6), poleM); st.position.y = 1.1; g.add(st);
-      const hd = new THREE.Group(); hd.position.set(0, 2.2, 0); g.add(hd); hd.lookAt(-30, 1, 0); hd.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45, 0.14), fxM)); const fc = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.36), workM); fc.position.z = 0.075; hd.add(fc); } }
+      const hd = new THREE.Group(); hd.position.set(0, 2.2, 0); g.add(hd); hd.lookAt(-30, 1, 0); hd.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45, 0.14), fxM)); const fc = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.36), workM); fc.position.z = 0.075; hd.add(fc);
+      prop(g, [['cyl', 1.1, 0.08, 0, 1.1, 0], ['box', 0.35, 0.23, 0.1, 0, 2.2, 0]], 18); } }
   { const n = 90, pos = [], col = [];
     for (let i = 0; i < n; i++) { const a = hash(i * 2.1) * 2 * PI, r = 170 + 260 * hash(i * 5.7), warm = hash(i * 9.3);
       if (Math.hypot(-20 + Math.cos(a) * r - LINEUP.cx, Math.sin(a) * r - LINEUP.line) < 110) continue;

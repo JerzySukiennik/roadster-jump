@@ -1,4 +1,4 @@
-// Roadster Jump camera rig: chase cam that rolls with the car over the curl (the ramp stays "down"), chase cam with a level horizon (the car hangs upside down on the ceiling), cockpit view from Eye_Driver, the on-foot orbit cam, mouse orbit with auto-recentre, speed FOV and collision against the ramp and props.
+// Roadster Jump camera rig: chase cam that rolls with the car over the curl (the ramp stays "down"), chase cam with a level horizon (the car hangs upside down on the ceiling), cockpit view from Eye_Driver (or the seat of the Tesla being driven), a per-vehicle chase distance, the on-foot orbit cam, mouse orbit with auto-recentre, speed FOV and collision against the ramp and props.
 import * as THREE from 'three';
 
 const Y = new THREE.Vector3(0, 1, 0);
@@ -21,7 +21,7 @@ export class CameraRig {
     this.orbitYaw = 0; this.orbitPitch = 0; this.idle = 9; this.init = false; this.fov = tuning.camera.fov;
     this.footYaw = 0; this.footPitch = 0.25; this.footDist = 3.4; this.lookYaw = 0; this.lookPitch = 0;
     this.right = new THREE.Vector3(1, 0, 0);
-    this.sens = 1;
+    this.sens = 1; this.scale = 1;
     this._a = new THREE.Vector3(); this._b = new THREE.Vector3(); this._c = new THREE.Vector3(); this._d = new THREE.Vector3(); this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion();
   }
 
@@ -65,14 +65,14 @@ export class CameraRig {
     const hh = this._b.copy(this.head).addScaledVector(up, -this.head.dot(up));
     if (hh.lengthSq() < 1e-3) hh.copy(carFwd).addScaledVector(up, -carFwd.dot(up));
     hh.normalize();
-    const dist = C.chase_distance * (1 + 0.15 * Math.min(1, sp / 40)), hgt = C.chase_height;
+    const dist = C.chase_distance * (1 + 0.15 * Math.min(1, sp / 40)) * this.scale, hgt = C.chase_height * this.scale;
     const back = hh.clone().negate().applyAxisAngle(up, this.orbitYaw);
     const side = new THREE.Vector3().crossVectors(up, back).normalize();
     back.applyAxisAngle(side, -this.orbitPitch * 0.8);
     const want = back.multiplyScalar(dist).addScaledVector(up, hgt + this.orbitPitch * 1.5);
     if (!this.init) this.offset.copy(want);
     this.offset.lerp(want, damp(early ? 1.8 : air ? 4 : 6, dt));
-    const target = p.clone().addScaledVector(carUp, 0.85);
+    const target = p.clone().addScaledVector(carUp, 0.85 * this.scale);
     let pos = target.clone().add(this.offset);
     const d = pos.clone().sub(target), L = d.length();
     if (this.cast && L > 0.1) { const t = this.cast(target, d.multiplyScalar(1 / L), L); if (t !== null) pos = target.clone().addScaledVector(d, Math.max(0.6, t - 0.35)); }

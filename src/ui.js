@@ -5,11 +5,11 @@ const $ = (id) => document.getElementById(id);
 const CAM = { chase: 'Chase', level: 'Horizon', fpp: 'Cockpit', foot: 'On foot' };
 const KEYS = {
   KeyW: ['W', 'Throttle. On foot, walk.'], KeyS: ['S', 'Brake. Hold it when stopped to reverse.'], KeyA: ['A', 'Steer left. In the air, spin.'], KeyD: ['D', 'Steer right. In the air, spin.'],
-  KeyF: ['F', 'Suction fan: sticks the car to the wall and the ceiling.'], KeyE: ['E', 'Get in or out of the Roadster.'], KeyC: ['C', 'Camera: chase, horizon, cockpit.'], KeyR: ['R', 'Reset the car to the start.'],
+  KeyF: ['F', 'Suction fan: sticks the car to the wall and the ceiling.'], KeyE: ['E', 'Get in or out. In the air, open the gullwing doors.'], KeyC: ['C', 'Camera: chase, horizon, cockpit.'], KeyR: ['R', 'Reset the car to the start.'],
   KeyT: ['T', 'Flight assist on or off. Off gives x1.5 points.'], KeyP: ['P', 'Replay the last jump.'], KeyM: ['M', 'Music on or off.'], KeyG: ['G', 'Show or hide the film stunts list.'],
   ShiftLeft: ['Shift', 'Rear thrusters boost. On foot, run.'], Space: ['Space', 'Jets: tap to hop, hold to ollie, soft landing in the air.'], Escape: ['Esc', 'Menu.'],
-  KeyL: ['L', 'Fly out to the Tesla lineup and back to the curl.'],
-  ArrowUp: ['↑', 'Frontflip in the air.'], ArrowDown: ['↓', 'Backflip in the air.'], ArrowLeft: ['←', 'Heelflip roll in the air.'], ArrowRight: ['→', 'Kickflip roll in the air.'],
+  KeyL: ['L', 'Fly out to the Tesla lineup and back to the curl.'], KeyO: ['O', 'Photo mode: freeze the moment, fly around and save a PNG.'],
+  ArrowUp: ['↑', 'Frontflip in the air. On the ground, nose manual.'], ArrowDown: ['↓', 'Backflip in the air. On the ground, manual on the rear wheels.'], ArrowLeft: ['←', 'Heelflip roll in the air.'], ArrowRight: ['→', 'Kickflip roll in the air.'],
 };
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 
@@ -17,7 +17,7 @@ export class UI {
   constructor(settings, online) {
     this.S = settings; this.online = online;
     this.el = { mph: $('mph'), gear: $('gear'), spool: $('spool'), dots: $('dots'), fan: $('chipFan'), assist: $('chipAssist'), cam: $('camName'), go: $('goName'), place: $('place'), placeN: $('placeName'), placeS: $('placeSub'), trick: $('trick'), tBig: $('trickBig'), tSub: $('trickSub'), tMeta: $('trickMeta'),
-      result: $('result'), rNames: $('resNames'), rQ: $('resQuality'), rPts: $('resPts'), rParts: $('resParts'), rRank: $('resRank'), best: $('best'), session: $('session'), prompt: $('prompt'), toast: $('toast'),
+      result: $('result'), rNames: $('resNames'), rQ: $('resQuality'), rPts: $('resPts'), rParts: $('resParts'), rRank: $('resRank'), best: $('best'), session: $('session'), online: $('online'), prompt: $('prompt'), toast: $('toast'),
       replay: $('replay'), rpFill: $('rpFill'), rpMode: $('rpMode'), rpHelp: $('rpHelp'), fps: $('fps'), tip: $('tip'), tipT: $('tipT'), tipD: $('tipD') };
     for (let i = 0; i < 10; i++) { const d = document.createElement('i'); if (i === 4 || i === 6) d.className = 'g'; this.el.dots.appendChild(d); }
     this.dots = [...this.el.dots.children];
@@ -114,13 +114,19 @@ export class UI {
     if (this.placeT > 0) { this.placeT -= h.dt; if (this.placeT <= 0) E.place.classList.remove('on'); }
     for (let i = 0; i < 10; i++) { const on = h.valves[i] > 0.08; if (this.dots[i]._on !== on) { this.dots[i]._on = on; this.dots[i].classList.toggle('on', on); } }
     const L = h.live;
-    if (L && L.air > 0.35) {
+    if (L && L.manual) {
+      this.lastHalf = 0;
+      this.set('tBig', `${L.mt.toFixed(1)} s`, (v) => { E.tBig.textContent = v; });
+      this.set('tSub', 'manual:' + L.manual, () => { E.tSub.textContent = L.manual; });
+      this.set('tMeta', L.combo ? `Combo ×${L.combo + 1}` : 'Keep it balanced', (v) => { E.tMeta.textContent = v; });
+      this.set('tOn', true, () => E.trick.classList.add('on'));
+    } else if (L && L.air > 0.35) {
       const deg = Math.round(Math.max(L.roll, L.pitch, L.yaw));
       const main = L.roll >= L.pitch && L.roll >= L.yaw ? (L.heel ? 'heel' : 'roll') : L.pitch >= L.yaw ? (L.back ? 'back' : 'flip') : 'spin';
       this.set('tBig', `${deg}°`, (v) => { E.tBig.textContent = v; });
       const half = Math.floor(deg / 180); if (half > this.lastHalf) { E.tBig.classList.remove('pop'); void E.tBig.offsetWidth; E.tBig.classList.add('pop'); } this.lastHalf = half;
       this.set('tSub', main, (v) => { E.tSub.textContent = { roll: 'Kickflip', heel: 'Heelflip', flip: 'Frontflip', back: 'Backflip', spin: 'Spin' }[v]; });
-      this.set('tMeta', `Air ${L.air.toFixed(1)} s · ${Math.round(L.h)} m`, (v) => { E.tMeta.textContent = v; });
+      this.set('tMeta', `Air ${L.air.toFixed(1)} s · ${Math.round(L.h)} m${L.combo ? ` · Combo ×${L.combo + 1}` : ''}`, (v) => { E.tMeta.textContent = v; });
       this.set('tOn', true, () => E.trick.classList.add('on'));
     } else if (h.hang > 0.4) {
       this.lastHalf = 0;
@@ -132,10 +138,11 @@ export class UI {
     this.set('prompt', h.prompt || '', (v) => { E.prompt.classList.toggle('on', !!v); if (v) E.prompt.innerHTML = v; });
     this.set('best', this.online.best.score || 0, (v) => { E.best.textContent = Math.round(v).toLocaleString('en-US'); if (v) this.ping(E.best, 'bump'); });
     this.set('session', h.session || '', (v) => { E.session.textContent = v; });
+    this.set('online', h.online || 0, (v) => { E.online.textContent = v > 1 ? `${v} online` : v === 1 ? 'Online · just you' : ''; E.online.classList.toggle('on', v > 1); });
     if (this.toastT > 0) { this.toastT -= h.dt; if (this.toastT <= 0) E.toast.classList.remove('on'); }
     if (this.resultT > 0) { this.resultT -= h.dt; if (this.resultT <= 0) { E.result.classList.add('leave'); E.result.classList.remove('on'); } }
     this.set('replay', !!h.replay, (v) => E.replay.classList.toggle('on', v));
-    if (h.replay) { E.rpFill.style.width = `${(h.replay.p * 100).toFixed(1)}%`; this.set('rpMode', h.replay.mode, (v) => { E.rpMode.textContent = v === 'tv' ? 'TV' : 'Free'; E.rpHelp.textContent = v === 'tv' ? (h.touch ? 'Cam for free view' : 'C free cam · P exit') : (h.touch ? 'Drag to orbit' : 'Mouse orbit · Space pause · ← → scrub · P exit'); }); }
+    if (h.replay) { E.rpFill.style.width = `${(h.replay.p * 100).toFixed(1)}%`; this.set('rpMode', h.replay.mode, (v) => { E.rpMode.textContent = v === 'tv' ? 'TV' : 'Free'; E.rpHelp.textContent = v === 'tv' ? (h.touch ? 'Cam for free fly' : 'C free fly · P exit') : (h.touch ? 'Stick fly · Go/Brake up, down · drag to look' : 'WASD fly · Q/E down, up · Shift fast · wheel speed · Space pause · ← → scrub · P exit'); }); }
     if (h.fps) E.fps.textContent = h.fps;
   }
 
@@ -181,10 +188,11 @@ export class UI {
     const tog = (id, key, cb) => { const el = $(id); const sync = () => el.classList.toggle('on', !!S[key]); el.onclick = () => { S[key] = !S[key]; sync(); this.save(); cb && cb(S[key]); }; sync(); return sync; };
     this.syncAssist = tog('optAssist', 'assist', (v) => this.onAssist && this.onAssist(v));
     this.syncGoals = tog('optGoals', 'goals', (v) => this.onGoals && this.onGoals(v));
+    this.syncMp = tog('optMp', 'mp', (v) => this.onMp && this.onMp(v));
     const rng = (id, key, fmt, cb) => { const el = $(id), v = $(id + 'V'); const upd = () => { const p = (S[key] - el.min) / (el.max - el.min) * 100; el.style.setProperty('--p', `${p}%`); v.textContent = fmt(S[key]); }; el.value = S[key]; upd(); el.oninput = () => { S[key] = +el.value; upd(); this.save(); cb && cb(); }; };
     const pct = (x) => `${Math.round(x * 100)}%`;
     rng('optMusic', 'musicVol', pct, () => this.onVolume && this.onVolume()); rng('optSfx', 'sfxVol', pct, () => this.onVolume && this.onVolume()); rng('optSens', 'sens', (x) => `${x.toFixed(2)}×`, () => this.onSens && this.onSens());
-    const nm = $('optName'); nm.value = S.name || ''; nm.onchange = () => { S.name = nm.value.trim().slice(0, 16); this.save(); this.online.rename(S.name); $('nameIn').value = S.name; };
+    const nm = $('optName'); nm.value = S.name || ''; nm.onchange = () => { S.name = nm.value.trim().slice(0, 16); this.save(); this.online.rename(S.name); $('nameIn').value = S.name; if (this.onRename) this.onRename(S.name); };
     const sel = $('boardSel');
     for (const b of BOARDS) { const x = document.createElement('button'); x.dataset.v = b.id; x.textContent = b.label; x.onclick = () => { this.board = b.id; for (const y of sel.querySelectorAll('button')) y.classList.toggle('on', y === x); this.segInk(sel); this.loadBoard(); }; sel.appendChild(x); }
     sel.querySelector('button').classList.add('on');
@@ -234,7 +242,7 @@ export class UI {
       $('mcTitle').textContent = opt.title || 'Paused'; $('mcSub').textContent = opt.sub || '';
       $('resume').textContent = opt.resume || 'Resume';
       for (const id of ['mReset', 'mReplay']) $(id).classList.toggle('hidden', !!opt.title);
-      this.syncCam(); this.syncAssist(); this.syncGoals(); $('optName').value = this.S.name || '';
+      this.syncCam(); this.syncAssist(); this.syncGoals(); this.syncMp(); $('optName').value = this.S.name || '';
       this.tab(opt.tab || 'play');
     } else if (this.menuOpen) {
       this.menuOpen = false; m.classList.add('closing'); setTimeout(() => { if (!this.menuOpen) m.classList.add('hidden'); }, 220);

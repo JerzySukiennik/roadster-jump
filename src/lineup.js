@@ -1,4 +1,4 @@
-// Roadster Jump lineup (from the "Do a kickflip" film): its own site about 440 m from the curl with the five Teslas the Roadster ollies over, parked side by side on a black LED stage (Model 3, Model Y, Semi, Cybertruck, Cybercab), hand-built lofted and faceted bodies merged per material with an event-lighting reflection map and contact shadows, floodlight towers with haze, power poles and wires, stage LEDs and smoke cannons that react to the Roadster flying over, plus the collision boxes, footprints, site light and start spot used by physics, scoring, travel and reset.
+// Roadster Jump lineup (from the "Do a kickflip" film): its own site about 440 m from the curl with the five Teslas the Roadster ollies over, parked side by side on a black LED stage (Model 3, Model Y, Semi, Cybertruck, Cybercab). Each car is a drivable vehicle: a hand-built lofted or faceted body merged per material in its own frame, instanced tyres and rims that spin, steer and ride the suspension, a contact shadow, its hull, tuning (mass, power, springs, camera distance) and driver door for the plain-car sim, with an event-lighting reflection map shared by all; plus floodlight towers with haze, power poles and wires, stage LEDs and smoke cannons that react to the Roadster flying over, the lamp road and the site light, start spot and footprints used by physics, scoring, travel and reset.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
@@ -8,22 +8,27 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
 
 const SPECS = [
   { id: 'm3', name: 'Model 3', W: 1.89, L: 4.72, H: 1.44, R: 0.335, tw: 0.235, axles: [1.5, -1.375], wmax: 0.925, rim: 0, paint: [0x1d45a8, 0.42, 0.24], intake: [0.31, 0.1, 0.56],
+    phys: { mass: 1850, com: [0, 0.5, 0.05], I: [2600, 2900, 640], kw: 380, F: 15000, mph: 155, cd: 0.52, steer: 34, cam: 1.05, seat: [0.4, 0.62, 0.15] },
     boxes: [[0, 0.52, 0, 0.93, 0.36, 2.33], [0, 1.12, -0.25, 0.68, 0.32, 1.2]],
     st: [[-2.36, 0.36, 0.84, 0.87, 0.76, 0.7], [-2.3, 0.27, 0.91, 0.96, 0.86, 0.8], [-2.15, 0.22, 0.94, 1.02, 0.9, 0.84], [-1.85, 0.18, 0.95, 1.03, 0.92, 0.84], [-1.55, 0.17, 0.94, 1.16, 0.925, 0.74], [-1.0, 0.16, 0.92, 1.36, 0.925, 0.66], [-0.35, 0.16, 0.9, 1.44, 0.925, 0.65], [0.25, 0.16, 0.88, 1.4, 0.925, 0.67], [0.75, 0.16, 0.86, 1.18, 0.925, 0.72], [1.1, 0.16, 0.84, 0.94, 0.92, 0.8], [1.6, 0.17, 0.8, 0.86, 0.91, 0.82], [2.0, 0.19, 0.74, 0.79, 0.88, 0.8], [2.22, 0.22, 0.69, 0.73, 0.86, 0.78], [2.33, 0.26, 0.62, 0.66, 0.8, 0.72], [2.36, 0.34, 0.54, 0.57, 0.72, 0.64]],
     glass: [-1.58, 1.08], mirror: 1.0,
     lights: [['white', 0.655, 0.026, 0.46, 0.86, 0], ['red', 0.9, 0.05, 0.5, 0.9, 1]] },
   { id: 'my', name: 'Model Y', W: 1.96, L: 4.79, H: 1.62, R: 0.36, tw: 0.255, axles: [1.445, -1.445], wmax: 0.96, rim: 1, paint: [0xa8121b, 0.38, 0.22], intake: [0.34, 0.12, 0.6],
+    phys: { mass: 2000, com: [0, 0.56, 0], I: [2900, 3200, 760], kw: 340, F: 15000, mph: 135, cd: 0.65, steer: 34, cam: 1.12, seat: [0.4, 0.7, 0.1] },
     boxes: [[0, 0.58, 0, 0.97, 0.41, 2.37], [0, 1.31, -0.3, 0.72, 0.31, 1.3]],
     st: [[-2.395, 0.4, 0.88, 0.92, 0.78, 0.72], [-2.34, 0.3, 0.96, 1.02, 0.89, 0.82], [-2.22, 0.24, 1.0, 1.07, 0.92, 0.86], [-2.0, 0.19, 1.02, 1.14, 0.95, 0.8], [-1.6, 0.18, 1.02, 1.38, 0.96, 0.7], [-1.1, 0.17, 1.01, 1.55, 0.96, 0.68], [-0.4, 0.17, 1.0, 1.62, 0.96, 0.68], [0.25, 0.17, 0.99, 1.585, 0.96, 0.7], [0.75, 0.17, 0.98, 1.38, 0.96, 0.75], [1.12, 0.17, 0.965, 1.1, 0.96, 0.82], [1.6, 0.18, 0.93, 1.0, 0.955, 0.86], [2.0, 0.21, 0.88, 0.93, 0.93, 0.84], [2.25, 0.25, 0.83, 0.87, 0.9, 0.82], [2.36, 0.3, 0.76, 0.8, 0.85, 0.77], [2.395, 0.38, 0.66, 0.7, 0.76, 0.7]],
     glass: [-2.02, 1.14], mirror: 1.12,
     lights: [['white', 0.8, 0.022, 0, 0.82, 0], ['white', 0.7, 0.045, 0.56, 0.86, 0], ['red', 0.985, 0.03, 0, 0.9, 1]] },
-  { id: 'semi', name: 'Semi', W: 2.6, L: 6.9, H: 3.98, R: 0.52, tw: 0.32, axles: [2.3], wmax: 1.295, rim: 4, paint: [0xe6e7e8, 0.05, 0.3], box: true,
+  { id: 'semi', name: 'Semi', W: 2.6, L: 6.9, H: 3.98, R: 0.52, tw: 0.32, axles: [2.3], wmax: 1.295, rim: 4, paint: [0xe6e7e8, 0.05, 0.3], box: true, rearAxle: -2.4,
+    phys: { mass: 9500, com: [0, 1.15, 0.9], I: [38000, 40000, 9500], kw: 800, F: 70000, mph: 65, cd: 3.4, steer: 30, cam: 1.9, rest: 0.42, travel: 0.17, seat: [0, 2.35, 1.8] },
     boxes: [[0, 2.25, 0.33, 1.3, 1.75, 1.58], [0, 1.8, 2.43, 1.28, 1.3, 0.52], [0, 1.08, 3.2, 1.24, 0.56, 0.25], [0, 0.8, -2.35, 1.15, 0.6, 1.1]],
     st: [[-1.25, 0.95, 3.6, 3.95, 1.26, 1.14], [-1.15, 0.7, 3.62, 3.97, 1.295, 1.18], [0.6, 0.62, 3.62, 3.98, 1.295, 1.18], [1.3, 0.6, 3.5, 3.86, 1.295, 1.17], [1.9, 0.58, 3.05, 3.4, 1.29, 1.16], [2.4, 0.56, 2.5, 2.85, 1.285, 1.15], [2.9, 0.54, 1.95, 2.25, 1.27, 1.14], [3.2, 0.52, 1.55, 1.85, 1.24, 1.12], [3.4, 0.55, 1.12, 1.38, 1.18, 1.06], [3.45, 0.66, 0.9, 1.05, 1.08, 0.98]],
     lights: [['white', 1.22, 0.035, 0, 1.05, 0], ['white', 1.08, 0.08, 0.8, 1.16, 0]] },
   { id: 'ct', name: 'Cybertruck', W: 2.16, L: 5.68, H: 1.79, R: 0.455, tw: 0.33, axles: [1.9, -1.9], wmax: 1.0, rim: 2,
+    phys: { mass: 3100, com: [0, 0.72, 0], I: [6000, 6500, 1500], kw: 630, F: 32000, mph: 112, cd: 0.95, steer: 32, cam: 1.3, seat: [0.45, 1.0, 0.1] },
     boxes: [[0, 0.72, 0, 1.0, 0.3, 2.84], [0, 1.33, -0.15, 0.88, 0.32, 1.35], [0, 1.15, -2.15, 0.95, 0.14, 0.69], [0, 1.1, 1.95, 0.95, 0.1, 0.89]] },
   { id: 'cab', name: 'Cybercab', W: 2.0, L: 4.25, H: 1.34, R: 0.37, tw: 0.27, axles: [1.42, -1.42], wmax: 0.975, rim: 3, paint: [0xc9a46a, 0.62, 0.26],
+    phys: { mass: 1700, com: [0, 0.48, 0], I: [2200, 2500, 560], kw: 170, F: 8500, mph: 85, cd: 0.55, steer: 36, cam: 1.0, seat: [0.42, 0.6, 0.0] },
     boxes: [[0, 0.52, 0, 0.98, 0.34, 2.12], [0, 1.08, -0.15, 0.72, 0.27, 1.35]],
     st: [[-2.125, 0.4, 0.84, 0.88, 0.8, 0.74], [-2.06, 0.3, 0.92, 0.98, 0.9, 0.83], [-1.92, 0.25, 0.94, 1.02, 0.95, 0.84], [-1.6, 0.21, 0.94, 1.08, 0.97, 0.8], [-1.2, 0.2, 0.92, 1.22, 0.975, 0.72], [-0.5, 0.2, 0.88, 1.34, 0.975, 0.68], [0.15, 0.2, 0.84, 1.32, 0.975, 0.7], [0.75, 0.2, 0.8, 1.12, 0.975, 0.76], [1.25, 0.2, 0.76, 0.9, 0.97, 0.82], [1.65, 0.22, 0.7, 0.76, 0.95, 0.84], [1.95, 0.25, 0.65, 0.69, 0.92, 0.84], [2.08, 0.29, 0.6, 0.63, 0.87, 0.79], [2.125, 0.36, 0.53, 0.56, 0.78, 0.72]],
     glass: [-1.5, 1.32],
@@ -50,13 +55,39 @@ export const LINEUP = (() => {
   };
 })();
 
+export const VEHICLES = SPECS.map((s) => s.id);
+
+export function vehicleHull(i) {
+  return SPECS[i].boxes.map(([x, y, z, hx, hy, hz]) => { const pts = []; for (const a of [-1, 1]) for (const b of [-1, 1]) for (const c of [-1, 1]) pts.push(x + a * hx, y + b * hy, z + c * hz); return new Float32Array(pts); });
+}
+
+export function wheelLayout(s) {
+  const out = [], zs = s.id === 'semi' ? [[2.3, s.tw, 0], [-1.8, 0.56, 1], [-3.0, 0.56, 1]] : s.axles.map((z, k) => [z, s.tw, k]);
+  const wm = s.id === 'ct' ? 0.905 + s.tw / 2 - 0.018 : s.wmax;
+  for (const [z, tw, rear] of zs) for (const side of [1, -1]) out.push({ x: side * (s.id === 'semi' && rear ? 0.98 : wm + 0.018 - tw / 2), z, tw, side, phys: (rear ? 2 : 0) + (side > 0 ? 0 : 1) });
+  return out;
+}
+
+export function vehicleTuning(base, i) {
+  const s = SPECS[i], P = s.phys, T = JSON.parse(JSON.stringify(base)), m = P.mass / base.car.mass, L = wheelLayout(s);
+  const zf = s.axles[0], zr = s.rearAxle ?? s.axles[1], tf = Math.abs(L[0].x) * 2, tr = Math.abs(L[L.length - 1].x) * 2;
+  Object.assign(T.car, { mass: P.mass, com: P.com, inertia: { pitch: P.I[0], yaw: P.I[1], roll: P.I[2] }, wheelbase: zf - zr, axle_z: [zf, zr], track_front: tf, track_rear: tr, length: s.L, width: s.W, height: s.H });
+  Object.assign(T.wheels, { radius_front: s.R, radius_rear: s.R, width_front: s.tw, width_rear: s.tw, inertia_each: base.wheels.inertia_each * m * (s.R / 0.355) ** 2, max_steer_deg: P.steer });
+  const S = T.suspension;
+  for (const k of ['spring_front', 'spring_rear', 'damper_bump', 'damper_rebound', 'antiroll_front', 'antiroll_rear', 'bump_stop_k']) S[k] *= m;
+  if (P.rest) S.rest_length = P.rest; if (P.travel) S.travel = P.travel;
+  Object.assign(T.powertrain, { max_power_kw: P.kw, max_wheel_force: P.F, limiter_mph: P.mph, regen_force: base.powertrain.regen_force * m, brake_force: base.powertrain.brake_force * m });
+  T.aero.cd_a = P.cd; T.aero.lift_a = 0; T.aero.angular_drag = base.aero.angular_drag.map((v) => v * m);
+  return T;
+}
+
+export function vehicleInfo(i) { const s = SPECS[i]; return { id: s.id, name: s.name, cam: s.phys.cam, seat: s.phys.seat, door: [s.wmax + 0.75, 0, s.phys.seat[2] + 0.2], r: Math.hypot(s.W / 2, s.L / 2) + 0.3, h: s.H }; }
+
 export function lineupBoxes() {
   const out = [], S = LINEUP.stage;
   out.push([(S.x0 + S.x1) / 2, S.y / 2, (S.z0 + S.z1) / 2, (S.x1 - S.x0) / 2, S.y / 2, (S.z1 - S.z0) / 2]);
-  SPECS.forEach((s, i) => { const c = LINEUP.cars[i]; for (const [x, y, z, hx, hy, hz] of s.boxes) out.push([c.x - x, LINEUP.y0 + y, c.z - z, hx, hy, hz]); });
   for (const [x, z, h] of LINEUP.towers) out.push([x, h / 2, z, 0.3, h / 2, 0.3]);
   for (const [x, z] of LINEUP.poles) out.push([x, 5.5, z, 0.17, 5.5, 0.17]);
-  for (const [x, z] of LINEUP.lamps) out.push([x, 4.5, z, 0.12, 4.5, 0.12]);
   return out;
 }
 
@@ -186,16 +217,39 @@ function prep(g, uv) {
 }
 
 function wheelParts(s, add, place) {
-  const tire = new THREE.CylinderGeometry(s.R, s.R, s.tw, 30, 1).rotateZ(PI / 2);
-  const rimR = s.R * (s.id === 'semi' ? 0.62 : 0.74), col = s.rim % 3, row = Math.floor(s.rim / 3);
-  const zs = s.id === 'semi' ? [[2.3, s.tw, 1], [-1.8, 0.56, 0], [-3.0, 0.56, 0]] : s.axles.map((z) => [z, s.tw, 1]);
-  for (const [z, tw, arch] of zs) for (const side of [1, -1]) {
-    const xc = side * (s.id === 'semi' && !arch ? 0.98 : s.wmax + 0.018 - tw / 2), tg = tw === s.tw ? tire.clone() : new THREE.CylinderGeometry(s.R, s.R, tw, 30, 1).rotateZ(PI / 2);
-    add('tire', place(tg.translate(xc, s.R, z)));
-    const disc = new THREE.CircleGeometry(rimR, 30), uv = disc.getAttribute('uv');
-    for (let k = 0; k < uv.count; k++) uv.setXY(k, (col + uv.getX(k)) / 3, (1 - row) * 0.5 + uv.getY(k) * 0.5);
-    add('rim', place(disc.rotateY(side * PI / 2).translate(xc + side * (tw / 2 + 0.003), s.R, z)), true);
-    if (arch) add('arch', place(new THREE.CircleGeometry(s.R + 0.07, 24, 0, PI).rotateY(side * PI / 2).translate(side * (s.wmax + 0.004), s.R, z)));
+  const zs = s.id === 'semi' ? [2.3] : s.axles;
+  for (const z of zs) for (const side of [1, -1]) add('arch', place(new THREE.CircleGeometry(s.R + 0.07, 24, 0, PI).rotateY(side * PI / 2).translate(side * (s.wmax + 0.004), s.R, z)));
+}
+
+function wheelGeos(s) {
+  const tire = new THREE.CylinderGeometry(s.R, s.R, 1, 30, 1).rotateZ(PI / 2); tire.deleteAttribute('uv');
+  const rimR = s.R * (s.id === 'semi' ? 0.62 : 0.74), col = s.rim % 3, row = Math.floor(s.rim / 3), disc = new THREE.CircleGeometry(rimR, 30), uv = disc.getAttribute('uv');
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, (col + uv.getX(k)) / 3, (1 - row) * 0.5 + uv.getY(k) * 0.5);
+  return { tire, rim: disc };
+}
+
+const _wm = new THREE.Matrix4(), _wr = new THREE.Matrix4(), _wq = new THREE.Quaternion(), _we = new THREE.Euler(0, 0, 0, 'YXZ'), _wp = new THREE.Vector3(), _ws = new THREE.Vector3();
+export class VehicleView {
+  constructor(kit, parent, M) {
+    this.kit = kit; this.root = new THREE.Group(); parent.add(this.root);
+    for (const [key, { mat, geo }] of kit.body) { const m = new THREE.Mesh(geo, mat), lit = !mat.isMeshBasicMaterial; m.castShadow = lit; m.receiveShadow = lit; m.name = kit.id + '_' + key; this.root.add(m); }
+    const n = kit.wheels.length;
+    this.tires = new THREE.InstancedMesh(kit.wheel.tire, M.tire, n); this.rims = new THREE.InstancedMesh(kit.wheel.rim, M.rim, n);
+    this.tires.castShadow = true; this.tires.frustumCulled = false; this.rims.frustumCulled = false; this.root.add(this.tires, this.rims);
+    this.shadow = new THREE.Mesh(kit.shadowGeo, M.shadow); this.shadow.renderOrder = 1; this.root.add(this.shadow);
+  }
+
+  pose(p, q, len, spin, steer, y0) {
+    this.root.position.set(p[0], p[1], p[2]); this.root.quaternion.set(q[0], q[1], q[2], q[3]);
+    this.kit.wheels.forEach((w, i) => {
+      const k = w.phys, a = k < 2 ? steer[k] : 0, yc = y0[k] - len[k];
+      _wq.setFromEuler(_we.set(spin[k], a, 0, 'YXZ'));
+      _wm.compose(_wp.set(w.x, yc, w.z), _wq, _ws.set(w.tw, 1, 1)); this.tires.setMatrixAt(i, _wm);
+      _wm.compose(_wp.set(w.x, yc, w.z), _wq, _ws.set(1, 1, 1)); _wr.makeRotationY(w.side * PI / 2).setPosition(w.side * (w.tw / 2 + 0.003), 0, 0); _wm.multiply(_wr); this.rims.setMatrixAt(i, _wm);
+    });
+    this.tires.instanceMatrix.needsUpdate = true; this.rims.instanceMatrix.needsUpdate = true;
+    const upY = 1 - 2 * (q[0] * q[0] + q[2] * q[2]);
+    this.shadow.visible = upY > 0.8 && p[1] < LINEUP.y0 + 0.6;
   }
 }
 
@@ -272,7 +326,7 @@ function buildCybertruck(s, add, place) {
 
 export function buildLineup(scene, Q) {
   const HI = Q.lights === 'high', step = Q.low ? 0.11 : 0.07;
-  const B = new Map(), paints = new Map();
+  const paints = new Map();
   const M = {
     glass: new THREE.MeshStandardMaterial({ color: 0x262c35, roughness: 0.1, metalness: 0.85, envMapIntensity: 1.2 }),
     tire: new THREE.MeshStandardMaterial({ color: 0x0c0c0d, roughness: 0.86, metalness: 0 }),
@@ -285,25 +339,17 @@ export function buildLineup(scene, Q) {
     amber: new THREE.MeshBasicMaterial({ color: new THREE.Color(3.4, 1.15, 0.12), side: THREE.DoubleSide }),
   };
   const paint = ([hex, metal, rough]) => HI ? new THREE.MeshPhysicalMaterial({ color: hex, metalness: metal, roughness: rough, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1 }) : new THREE.MeshStandardMaterial({ color: hex, metalness: metal, roughness: rough, envMapIntensity: 1.05 });
-  const push = (key, mat, g) => { if (!B.has(key)) B.set(key, { mat, geos: [] }); B.get(key).geos.push(g); };
   const root = new THREE.Group(); scene.add(root);
-  const shadows = [];
-  SPECS.forEach((s, i) => {
-    const c = LINEUP.cars[i], m4 = new THREE.Matrix4().makeRotationY(PI).setPosition(c.x, LINEUP.y0, c.z);
-    const place = (g) => g.applyMatrix4(m4);
+  M.shadow = new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: softRect(), transparent: true, opacity: 0.92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+  const kits = SPECS.map((s) => {
+    const B = new Map(), place = (g) => g;
     if (s.paint) paints.set(s.id, paint(s.paint));
-    const add = (key, g, uv) => { const k = key === 'paint' ? 'paint_' + s.id : key; push(k, key === 'paint' ? paints.get(s.id) : M[key], prep(g, !!uv)); };
+    const add = (key, g, uv) => { const k = key === 'paint' ? 'paint_' + s.id : key; if (!B.has(k)) B.set(k, { mat: key === 'paint' ? paints.get(s.id) : M[key], geos: [] }); B.get(k).geos.push(prep(g, !!uv)); };
     if (s.id === 'ct') buildCybertruck(s, add, place); else buildLoftCar(s, add, place, step);
-    const sw = s.wmax * 2 + 0.55, sl = s.L + 0.45;
-    shadows.push(new THREE.PlaneGeometry(sw, sl).rotateX(-PI / 2).translate(c.x, LINEUP.y0 + 0.004, c.z));
+    const body = new Map(); for (const [k, { mat, geos }] of B) body.set(k, { mat, geo: mergeGeometries(geos, false) });
+    return { id: s.id, spec: s, body, wheels: wheelLayout(s), wheel: wheelGeos(s), shadowGeo: new THREE.PlaneGeometry(s.wmax * 2 + 0.55, s.L + 0.45).rotateX(-PI / 2).translate(0, 0.004, 0) };
   });
-  for (const [key, { mat, geos }] of B) {
-    const m = new THREE.Mesh(mergeGeometries(geos, false), mat);
-    const lit = !(mat.isMeshBasicMaterial);
-    m.castShadow = lit && key !== 'rim'; m.receiveShadow = lit; m.name = 'lineup_' + key; root.add(m);
-  }
-  const shM = new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: softRect(), transparent: true, opacity: 0.92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
-  const sh = new THREE.Mesh(mergeGeometries(shadows, false), shM); sh.renderOrder = 1; root.add(sh);
+  const views = kits.map((k, i) => { const v = new VehicleView(k, root, M), c = LINEUP.cars[i]; v.pose([c.x, LINEUP.y0, c.z], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0], [k.spec.R, k.spec.R, k.spec.R, k.spec.R]); return v; });
 
   const S = LINEUP.stage, sx = S.x1 - S.x0, sz = S.z1 - S.z0, cxS = (S.x0 + S.x1) / 2, czS = (S.z0 + S.z1) / 2;
   const stageM = new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.34, metalness: 0.4, envMapIntensity: 0.55 });
@@ -351,13 +397,20 @@ void main(){ float px = fract(vS / 0.08); float pix = smoothstep(0.0, 0.25, px) 
     for (let i = 0; i < P.length - 1; i++) span(P[i], P[i + 1]);
     span([P[0][0] - 60, P[0][1] - 2], P[0]); span(P[P.length - 1], [P[P.length - 1][0] + 60, P[P.length - 1][1] - 3]);
     root.add(new THREE.Mesh(mergeGeometries(wires), wireM)); }
+  const props = [];
   { const Lm = LINEUP.lamps, n = Lm.length, m4 = new THREE.Matrix4(), sodium = new THREE.MeshBasicMaterial({ color: new THREE.Color(6, 3.4, 1.3) });
     const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.08, 0.12, 9, 8).translate(0, 4.5, 0), poleM, n), arms = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 0.1, 1.7).translate(0, 8.95, 0.75), poleM, n), heads = new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.12, 0.32).translate(0, 8.86, 1.45), sodium, n);
     const pc = document.createElement('canvas'); pc.width = pc.height = 128; const g = pc.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,175,100,0.3)'); gr.addColorStop(0.35, 'rgba(255,150,70,0.13)'); gr.addColorStop(0.7, 'rgba(255,130,50,0.04)'); gr.addColorStop(1, 'rgba(255,120,40,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
     const poolM = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(pc), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }); poolM.map.colorSpace = THREE.SRGBColorSpace;
     const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(13, 13).rotateX(-PI / 2), poolM, n);
-    Lm.forEach(([x, z], i) => { const yaw = z > LINEUP.line ? PI : 0; m4.makeRotationY(yaw).setPosition(x, 0, z); posts.setMatrixAt(i, m4); arms.setMatrixAt(i, m4); heads.setMatrixAt(i, m4); m4.makeTranslation(x, 0.012, z + (z > LINEUP.line ? -1.45 : 1.45)); pools.setMatrixAt(i, m4); });
-    for (const im of [posts, arms, heads, pools]) { im.computeBoundingSphere(); root.add(im); } pools.renderOrder = 1; }
+    const hidePool = new THREE.Matrix4().makeScale(0, 0, 0);
+    Lm.forEach(([x, z], i) => {
+      const yaw = z > LINEUP.line ? PI : 0; m4.makeRotationY(yaw).setPosition(x, 0, z); posts.setMatrixAt(i, m4); arms.setMatrixAt(i, m4); heads.setMatrixAt(i, m4);
+      const pm = new THREE.Matrix4().makeTranslation(x, 0.012, z + (z > LINEUP.line ? -1.45 : 1.45)); pools.setMatrixAt(i, pm);
+      props.push({ inst: [posts, arms, heads], i, shapes: [['cyl', 4.5, 0.12, 0, 4.5, 0], ['box', 0.25, 0.08, 1.0, 0, 8.9, 1.1]], mass: 120, p: new THREE.Vector3(x, 0, z), q: new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw),
+        onMove: (pp, upv) => { pools.setMatrixAt(i, upv.y > 0.97 ? pm : hidePool); pools.instanceMatrix.needsUpdate = true; } });
+    });
+    for (const im of [posts, arms, heads, pools]) { im.computeBoundingSphere(); im.boundingSphere.radius += 30; root.add(im); } pools.renderOrder = 1; }
 
   const rigM = new THREE.MeshStandardMaterial({ color: 0x141518, roughness: 0.5, metalness: 0.6 }), rigs = [];
   for (const end of [-1, 1]) {
@@ -368,16 +421,20 @@ void main(){ float px = fract(vS / 0.08); float pix = smoothstep(0.0, 0.25, px) 
       const d = new THREE.Vector3(end * 0.55, 1, (k - 1) * 0.35).normalize(), tube = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.7, 14), rigM);
       const p = new THREE.Vector3(0, 0.62, (k - 1) * 0.75); tube.position.copy(p); tube.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d); g.add(tube);
       const cap = new THREE.Mesh(new THREE.CircleGeometry(0.11, 14), lens); cap.position.copy(p).addScaledVector(d, 0.352); cap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d); g.add(cap);
-      dirs.push({ p: p.clone().add(g.position).addScaledVector(d, 0.4), d });
+      dirs.push({ p: p.clone().addScaledVector(d, 0.4), d });
     }
-    rigs.push({ end, lens, dirs, fire: -1 });
+    rigs.push({ end, lens, dirs, fire: -1, g });
+    props.push({ g, shapes: [['box', 0.5, 0.18, 1.2, 0, 0.18, 0], ['box', 0.35, 0.3, 1.05, 0, 0.66, 0]], mass: 120, p: g.position.clone(), q: g.quaternion.clone() });
   }
 
   const st = { was: false, head: 0, headX: -1e3, flash: 0, chase: 0, dir: 1 };
   const c = new THREE.Vector3(), q = new THREE.Quaternion(), up = new THREE.Vector3();
   const lit = [M.glass, M.tire, M.trim, M.rim, M.steel, stageM, ...paints.values()];
   const L = {
-    root, ledM,
+    root, ledM, props, kits, views, M,
+    spawnView(i, parent) { return new VehicleView(kits[i], parent || scene, M); },
+    hull: (i) => vehicleHull(i),
+    wheelY: (i) => { const R = SPECS[i].R; return [R + 1, R + 1, R + 1, R + 1]; },
     makeEnv(renderer) {
       const es = new THREE.Scene(); es.background = new THREE.Color(0x000000);
       const panel = (w, h, pos, col, look) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide })); m.position.set(...pos); m.lookAt(...(look || [0, 0, 0])); es.add(m); };
@@ -414,7 +471,7 @@ void main(){ float px = fract(vS / 0.08); float pix = smoothstep(0.0, 0.25, px) 
         if (r.fire >= 0) {
           if (smoke && r.fire < 0.55) {
             const n = Math.round(dt * (smoke.N > 1000 ? 150 : 55));
-            for (let k = 0; k < n; k++) { const o = r.dirs[k % 3], rnd = () => smoke.rnd(); const v = o.d.clone().multiplyScalar(9 + 7 * rnd()).add(new THREE.Vector3((rnd() - 0.5) * 2.5, (rnd() - 0.5) * 2, (rnd() - 0.5) * 2.5)); smoke.emit(o.p.clone(), v, { life: 4 + 3 * rnd(), s0: 0.6 + 0.5 * rnd(), grow: 3.2 + 2.4 * rnd(), k: 1.3, a: 0.2, buoy: 0.35 }); }
+            for (let k = 0; k < n; k++) { const o = r.dirs[k % 3], rnd = () => smoke.rnd(), wp = o.p.clone().applyMatrix4(r.g.matrixWorld), wd = o.d.clone().transformDirection(r.g.matrixWorld); const v = wd.multiplyScalar(9 + 7 * rnd()).add(new THREE.Vector3((rnd() - 0.5) * 2.5, (rnd() - 0.5) * 2, (rnd() - 0.5) * 2.5)); smoke.emit(wp, v, { life: 4 + 3 * rnd(), s0: 0.6 + 0.5 * rnd(), grow: 3.2 + 2.4 * rnd(), k: 1.3, a: 0.2, buoy: 0.35 }); }
           }
           r.fire += dt; if (r.fire > 1.2) r.fire = -1;
         }

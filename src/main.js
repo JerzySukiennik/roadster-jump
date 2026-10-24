@@ -22,12 +22,17 @@ import { Walker, PARKED } from './avatar/walker.js';
 import { Moves } from './avatar/moves.js';
 import { Showroom } from './showroom.js';
 import { Goals } from './goals.js';
-import { LINEUP, buildLineup } from './lineup.js';
+import { LINEUP, buildLineup, vehicleHull, vehicleTuning, vehicleInfo } from './lineup.js';
+import { GhostCam } from './ghostcam.js';
+import { PhotoMode } from './photo.js';
+import { Props } from './props.js';
+import { Net } from './net.js';
+import { Remotes, packCar, packWalker } from './remote.js';
 
 const qs = new URLSearchParams(location.search);
 const TOUCH = qs.has('touch') || matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 const load = (k) => { try { return JSON.parse(localStorage.getItem(k) || '{}'); } catch (e) { return {}; } };
-const S = Object.assign({ assist: true, cam: 'chase', quality: 'auto', musicVol: 0.6, sfxVol: 0.9, sens: 1, name: '', music: true, goals: true }, load('rj.settings'));
+const S = Object.assign({ assist: true, cam: 'chase', quality: 'auto', musicVol: 0.6, sfxVol: 0.9, sens: 1, name: '', music: true, goals: true, mp: true }, load('rj.settings'));
 const QUAL = qs.get('q') || (S.quality === 'auto' ? (TOUCH ? 'low' : 'auto') : S.quality);
 const LOW = QUAL === 'low', HIGHQ = QUAL === 'high';
 const Q = { simple: qs.get('simple') !== '0', low: LOW, lights: qs.get('lights') || (LOW ? 'low' : HIGHQ ? 'high' : 'mid'), shadow: LOW ? 1024 : 2048, msaa: qs.has('msaa') ? +qs.get('msaa') : LOW ? 0 : HIGHQ ? 4 : 2, dpr: qs.has('dpr') ? +qs.get('dpr') : Math.min(window.devicePixelRatio || 1, HIGHQ ? 1.5 : 1.25) };
@@ -66,6 +71,9 @@ ui.loading(0.08, 'Building the arena');
 const A = buildArena(scene, Q);
 const lineup = buildLineup(scene, Q);
 lineup.makeEnv(renderer);
+const props = new Props(RAPIER, phys.world);
+for (const p of A.props) props.addGroup(p.g, p.shapes, p.mass);
+for (const p of lineup.props) props.add(p);
 const siteSpot = [A.padSpot, A.ceilLight].find((l) => !l.isFake), FOG = scene.fog.density;
 const siteHome = { pos: siteSpot.position.clone(), tgt: siteSpot.target.position.clone(), angle: siteSpot.angle, pen: siteSpot.penumbra, I: siteSpot.intensity };
 const siteAway = { pos: new THREE.Vector3(...LINEUP.light.pos), tgt: new THREE.Vector3(...LINEUP.light.tgt), angle: LINEUP.light.angle, pen: LINEUP.light.pen, I: LINEUP.light.I };
@@ -79,22 +87,47 @@ function placeLights(z) {
 ui.loading(0.12, 'Loading the Roadster');
 await loadCarAssets(LOW || qs.get('car') === 'lod1' ? 'assets/car/roadster_lod1.glb' : 'assets/car/roadster.glb', (e) => { if (e.total) ui.loading(0.12 + 0.8 * e.loaded / e.total, `Loading the Roadster · ${(e.loaded / 1e6).toFixed(1)} / ${(e.total / 1e6).toFixed(1)} MB`); });
 const view = new CarView(scene, TUNING, Q);
-const car = new CarSim(RAPIER, phys.world, TUNING, { position: START.p, yaw: START.yaw });
+const roadster = new CarSim(RAPIER, phys.world, TUNING, { position: START.p, yaw: START.yaw });
+let car = roadster, active = null;
 car.flight.assist = S.assist;
-const carObj = { sim: car, view, curr: { pos: new THREE.Vector3(), quat: new THREE.Quaternion() } };
+const carObj = { sim: roadster, view, curr: { pos: new THREE.Vector3(), quat: new THREE.Quaternion() } };
+const fleet = lineup.views.map((v, i) => {
+  const c = LINEUP.cars[i], info = vehicleInfo(i), home = { p: [c.x, LINEUP.y0 + 0.04, c.z], yaw: Math.PI };
+  const sim = new CarSim(RAPIER, phys.world, vehicleTuning(TUNING, i), { position: home.p, yaw: home.yaw, jets: false, hull: vehicleHull(i), canSleep: true });
+  return { i, info, sim, view: v, home, prev: new CarPose(), curr: new CarPose(), draw: new CarPose(), rest: 0, asleep: false, y0: sim.wheels.map((w) => w.local.y) };
+});
+const rPose = { prev: new CarPose(), curr: new CarPose(), draw: new CarPose() };
+const net = new Net(online, { local: qs.get('mp') === 'local' });
+const remotes = new Remotes({ scene, R: RAPIER, world: phys.world, lineup, smoke: null, tuning: TUNING, url: 'assets/car/roadster_lod1.glb', tags: document.getElementById('tags') });
+net.onState = (u, n, st, t) => remotes.update(u, n, st, t);
+net.onLeave = (u) => remotes.remove(u);
+remotes.onTpl = (g) => { try { renderer.compile(g, camera); } catch (e) { /* compile on first draw */ } };
+let stepClock = performance.now();
+const mpName = () => S.name || `Guest ${(online.uid || net.uid || '000').slice(-3).toUpperCase()}`;
+function mpJoin() { if (!S.mp || qs.get('mp') === 'off' || net.on) return; net.join(mpName()).then((ok) => { if (ok) ui.toast(`Online · ${net.peers.size ? net.peers.size + 1 + ' players' : 'shared arena'}`, 1.8); }); }
+function mpLeave() { net.leave(); for (const u of [...remotes.list.keys()]) remotes.remove(u); }
+function packMe() {
+  let st = `v1|${active ? active.i + 1 : 0}|${packCar(roadster, door.t, roadster.contacts === 0)}`;
+  if (active) st += `|A:${packCar(active.sim, 0, active.sim.contacts === 0)}`;
+  if (!inCar && walker.active) st += `|W:${packWalker(walker)}`;
+  return st;
+}
+const vidOf = (sim) => { const f = fleet.find((q) => q.sim === sim); return f ? f.i + 1 : 0; };
 const smoke = new Smoke(scene, Q);
+remotes.smoke = smoke;
 const input = new Input(canvas); input.isTouch = TOUCH; window.__rjInput = input;
 const touch = TOUCH ? new Touch(input) : null;
 const audio = new GameAudio(); audio.musicOn = S.music; audio.musicVol = S.musicVol; audio.sfxVol = S.sfxVol;
 const rig = new CameraRig(camera, TUNING, (o, d, l) => phys.castFrom(o, d, l)); rig.sens = S.sens; rig.mode = S.cam;
-const rec = new Recorder(), replay = new Replay(rec);
+const rec = new Recorder(), replay = new Replay(rec), ghost = new GhostCam();
 const walker = new Walker(RAPIER, phys.world);
 const groundHeight = (x, z, from) => phys.castDown(x, z, from);
 const G = { driver, walker, scene, groundHeight, doorPulse: (c, open) => setDoor(open) };
 const moves = new Moves(G);
 
 ui.loading(0.94, 'Lighting');
-for (let i = 0; i < 150; i++) { car.preStep(H, PARKED); phys.step(); car.postStep(H); }
+for (let i = 0; i < 150; i++) { roadster.preStep(H, PARKED); for (const f of fleet) f.sim.preStep(H, PARKED); phys.step(); roadster.postStep(H); for (const f of fleet) f.sim.postStep(H); }
+for (const f of fleet) { f.curr.fromSim(f.sim, 0, f.i + 1); f.prev.fromSim(f.sim, 0, f.i + 1); f.draw.fromSim(f.sim, 0, f.i + 1); f.asleep = true; f.sim.body.sleep(); }
 
 const ev = { RUN1: 1e9, TOP1: 1e9, HOLD1: 1e9, DOWN1: 1e9, RUN2: 1e9, LIP: 1e9, LAND: 1e9, carS: null };
 {
@@ -121,7 +154,7 @@ let mv = { x: 0, z: 0, run: false, jump: false };
 const ramp = { on: false, s: null, lastUpY: 1, lastOn: false, run: false, offT: 0 };
 const events = { land: 0 };
 const session = { jumps: 0, total: 0 };
-let stopT = 0, lastHint = '', fly = null, viewShift = 1, frozen = false, zone = 'ramp', camOverride = null, travel = null;
+let stopT = 0, lastHint = '', fly = null, viewShift = 1, frozen = false, zone = 'ramp', camOverride = null, travel = null, photo = null;
 const showroom = new Showroom({ view, camera, audio, touch: TOUCH });
 const SHOW_TGT = new THREE.Vector3(START.p[0], 0.62, START.p[2]);
 const goals = new Goals(S.goals, (text, all) => ui.toast(all ? 'All film stunts done' : `Stunt done · ${text}`, 2.2));
@@ -144,7 +177,7 @@ function startTravel() {
 }
 function arriveTravel(tv) {
   tv.done = true;
-  if (!inCar) { walker.leave(); inCar = true; moves.cur = null; if (driver.root) driver.attach(view.seatRoot, false); }
+  if (!inCar) { walker.leave(); inCar = true; moves.cur = null; if (driver.root) { if (active) driver.root.visible = false; else driver.attach(view.seatRoot, false); } }
   door.target = 0; door.t = 0; door.close = 0;
   car.teleport(tv.dst.p, tv.dst.yaw, 0); car.fan = false;
   tricks.reset(); tricks.ceil = 0; tricks.ceilRun = 0;
@@ -173,7 +206,12 @@ function travelCamera(dt) {
 
 function setDoor(open) { door.target = open ? 1 : 0; audio.play(open ? 'door_open' : 'door_close', { gain: 0.6 }); }
 const poseBuf = new Float32Array(CarPose.SIZE);
-function syncPoses() { currP.fromSim(car, door.t); currP.write(poseBuf, 0); prevP.read(poseBuf, 0); carObj.curr.pos.set(car.pos.x, car.pos.y, car.pos.z); carObj.curr.quat.set(car.q.x, car.q.y, car.q.z, car.q.w); }
+function syncPoses() {
+  currP.fromSim(car, car === roadster ? door.t : 0, vidOf(car)); currP.write(poseBuf, 0); prevP.read(poseBuf, 0);
+  rPose.curr.fromSim(roadster, door.t); rPose.prev.fromSim(roadster, door.t);
+  for (const f of fleet) { f.curr.fromSim(f.sim, 0, f.i + 1); f.prev.fromSim(f.sim, 0, f.i + 1); }
+  carObj.curr.pos.set(roadster.pos.x, roadster.pos.y, roadster.pos.z); carObj.curr.quat.set(roadster.q.x, roadster.q.y, roadster.q.z, roadster.q.w);
+}
 syncPoses();
 
 const tricks = new Tricks((kind, d) => {
@@ -196,9 +234,25 @@ const tricks = new Tricks((kind, d) => {
     }
     ui.result(d, nb);
     last.result = d;
+    if (door.target > 0.5 && inCar) door.close = 0.7;
   } else if (kind === 'hang') ui.toast(`Ceiling hang ${d.t.toFixed(1)} s`, 2);
+  else if (kind === 'manual') {
+    session.total += d.total;
+    ui.result({ ok: true, names: [d.kind], quality: `${d.t.toFixed(1)} s on two wheels`, total: d.total, parts: [[d.kind, `${d.t.toFixed(1)} s`, Math.round(d.t * 180)]], mults: d.mult > 1 ? [[`Combo ×${d.combo}`, d.mult]] : [] }, false);
+  }
 });
 const last = { result: null };
+const fleetHome = (f) => Math.hypot(f.sim.pos.x - f.home.p[0], f.sim.pos.z - f.home.p[2]) < 2.5 && f.sim.up.y > 0.9;
+tricks.over = (x, z) => {
+  for (const f of fleet) {
+    if (f.sim === car) continue;
+    const c = LINEUP.cars[f.i], s2 = f.sim, yaw = s2.yaw(), co = Math.cos(yaw), si = Math.sin(yaw), dx = x - s2.pos.x, dz = z - s2.pos.z;
+    const lx = dx * co - dz * si, lz = dx * si + dz * co;
+    if (Math.abs(lx) < c.W / 2 + 0.15 && Math.abs(lz) < c.L / 2 + 0.15) return { i: f.i, top: s2.pos.y + c.top - LINEUP.y0 };
+  }
+  return null;
+};
+tricks.lineupSize = () => fleet.filter((f) => f.sim !== car && fleetHome(f)).length;
 
 function laneAssist(inp) {
   if (!S.assist || !ramp.on || car.contacts < 2) return inp;
@@ -216,15 +270,33 @@ function step(h) {
   let inp = inCar && !moves.busy && !travel ? input.controls(h, air) : PARKED;
   if (inCar) inp = laneAssist(inp);
   car.flight.assist = S.assist;
+  if (car !== roadster) roadster.preStep(h, PARKED);
   car.preStep(h, inp);
+  for (const f of fleet) {
+    if (f.sim === car) continue;
+    if (f.asleep) { if (f.sim.body.isSleeping()) continue; f.asleep = false; f.rest = 0; }
+    f.sim.preStep(h, PARKED);
+  }
+  if (remotes.size) remotes.kinematic(stepClock, h);
   if (walker.active && !moves.busy) { walker.step(h, travel ? { x: 0, z: 0, run: false, jump: false } : mv, rig.footYaw); mv.jump = false; }
   phys.step();
   rampFollow();
   car.postStep(h);
+  if (car !== roadster) roadster.postStep(h);
+  for (const f of fleet) {
+    if (f.sim === car || f.asleep) continue;
+    f.sim.postStep(h);
+    const s2 = f.sim; f.rest = s2.speed < 0.06 && s2.angW.len() < 0.06 && s2.contacts >= 3 ? f.rest + h : 0;
+    if (f.rest > 1.2) { f.asleep = true; s2.body.sleep(); }
+  }
+  props.blast(jetList(), h);
+  _mv.length = 0; _mv.push(mover(roadster, 2.7, 1.6)); for (const f of fleet) if (!f.asleep || f.sim === car) _mv.push(mover(f.sim, f.info.r, f.info.h)); if (remotes.size) remotes.movers(_mv, () => _mvPool[_mvI++ % _mvPool.length]); props.touch(_mv);
   phys.events.drainContactForceEvents(() => {});
   currP.write(poseBuf, 0); prevP.read(poseBuf, 0);
-  currP.fromSim(car, door.t);
-  carObj.curr.pos.set(car.pos.x, car.pos.y, car.pos.z); carObj.curr.quat.set(car.q.x, car.q.y, car.q.z, car.q.w);
+  currP.fromSim(car, car === roadster ? door.t : 0, vidOf(car));
+  rPose.curr.write(poseBuf, 0); rPose.prev.read(poseBuf, 0); rPose.curr.fromSim(roadster, door.t);
+  for (const f of fleet) { if (f.sim === car || f.asleep) continue; f.curr.write(poseBuf, 0); f.prev.read(poseBuf, 0); f.curr.fromSim(f.sim, 0, f.i + 1); }
+  carObj.curr.pos.set(roadster.pos.x, roadster.pos.y, roadster.pos.z); carObj.curr.quat.set(roadster.q.x, roadster.q.y, roadster.q.z, roadster.q.w);
   let on = false; for (const w of car.wheels) if (w.contact && w.hitCollider && rampHandles.has(w.hitCollider.handle)) on = true;
   ramp.on = on;
   if (car.contacts >= 1) { ramp.lastOn = on; if (on) ramp.lastUpY = car.up.y; }
@@ -235,10 +307,24 @@ function step(h) {
   if (on && car.up.y < -0.9 && car.contacts >= 3) goals.hit('ceil');
   if (tricks.ceil >= 5) goals.hit('hang');
   zone = LINEUP.near(inCar || !walker.active ? car.pos : walker.pos) ? 'lineup' : 'ramp';
-  tricks.update(h, { contacts: car.contacts, onRamp: on, up: car.up, pos: car.pos, vel: car.vel, ang: car.angLocal, assist: S.assist, lastRampUpY: ramp.lastUpY, lastOnRamp: ramp.lastOn });
+  tricks.update(h, { contacts: car.contacts, onRamp: on, up: car.up, pos: car.pos, vel: car.vel, ang: car.angLocal, assist: S.assist, lastRampUpY: ramp.lastUpY, lastOnRamp: ramp.lastOn, door: inCar ? door.t : 0, speed: car.speed, wheels: car.wheels });
   if (++stepN % 2 === 0) rec.push(simT, currP);
   simT += h;
   if (car.pos.y < -30 || Math.abs(car.pos.x) > 1100 || Math.abs(car.pos.z) > 1100) reset();
+}
+
+const _mv = [], _mvPool = Array.from({ length: 12 }, () => ({ x: 0, y: 0, z: 0, r: 0, h: 0 }));
+let _mvI = 0;
+function mover(sim, r, h) { const m = _mvPool[_mvI++ % _mvPool.length]; m.x = sim.pos.x; m.y = sim.pos.y; m.z = sim.pos.z; m.r = r; m.h = h; return m; }
+const _jets = Array.from({ length: 10 }, () => ({ o: new THREE.Vector3(), d: new THREE.Vector3(), k: 0 })), _jl = [], _jq = new THREE.Quaternion();
+function jetList() {
+  _jl.length = 0;
+  _jq.set(car.q.x, car.q.y, car.q.z, car.q.w);
+  car.thrusters.all.forEach((n, i) => {
+    if (n.valve < 0.15) return;
+    const j = _jets[i]; j.o.set(n.pos.x, n.pos.y, n.pos.z).applyQuaternion(_jq).add(car.pos); j.d.set(-n.dir.x, -n.dir.y, -n.dir.z).applyQuaternion(_jq); j.k = n.valve * n.thrustMax / 9000; _jl.push(j);
+  });
+  return _jl;
 }
 
 const CURV = (s) => (s > 0 && s < RAMP.S1 ? 1 / RAMP.R1 : s > RAMP.S2 && s < RAMP.S3 ? 1 / RAMP.R2 : 0);
@@ -261,10 +347,17 @@ function rampFollow() {
   }
 }
 
+function sendHome(f) { f.sim.teleport(f.home.p, f.home.yaw, 0); f.asleep = false; f.rest = 0; f.sim.body.wakeUp(); }
 function reset() {
   if (travel) return;
+  if (inCar && active) {
+    for (const f of fleet) sendHome(f);
+    const S0 = LINEUP.stage; if (roadster.pos.x > S0.x0 - 3 && roadster.pos.x < S0.x1 + 3 && roadster.pos.z > S0.z0 - 3 && roadster.pos.z < S0.z1 + 3) roadster.teleport(LINEUP.start.p, LINEUP.start.yaw, 0);
+    props.reset(); lineup.reset(); tricks.reset(); smoke.clear(); rig.cut(); if (replay.active) stopReplay(); last.result = null; syncPoses(); ui.toast(`${active.info.name} back in the lineup`, 1.4); return; }
   const sp = zone === 'lineup' ? LINEUP.start : START;
-  car.teleport(sp.p, sp.yaw, 0); lineup.reset();
+  roadster.teleport(sp.p, sp.yaw, 0); for (const f of fleet) if (f.sim !== car || !inCar) sendHome(f);
+  if (!inCar) setActive(null);
+  lineup.reset(); props.reset();
   tricks.reset(); tricks.ceil = 0; tricks.ceilRun = 0;
   ev.RUN2 = ev.LIP = ev.LAND = 1e9; ramp.run = false; ramp.on = false;
   smoke.clear(); rig.cut(); if (replay.active) stopReplay();
@@ -282,7 +375,31 @@ function spawnFoot(near) {
   rig.mode = 'foot'; rig.footYaw = near ? rig.footYaw : 0.9; rig.cut();
 }
 
+function setActive(f) {
+  const sim = f ? f.sim : roadster;
+  if (car === sim) return;
+  car = sim; active = f;
+  if (f) { f.asleep = false; f.rest = 0; sim.body.wakeUp(); }
+  tricks.reset(); ramp.on = false; ramp.run = false; rig.scale = f ? f.info.cam : 1; rig.cut();
+  syncPoses();
+}
+function boardFleet(f) {
+  setActive(f); walker.leave(); inCar = true; moves.cur = null;
+  if (driver.root) driver.root.visible = false;
+  rig.mode = S.cam; rig.cut(); applyCabin();
+  audio.play('door_close', { gain: 0.5 });
+  ui.toast(`${f.info.name} · E to get out`, 2);
+}
+function doorPoint(f) { const d = f.info.door, q = new THREE.Quaternion(f.sim.q.x, f.sim.q.y, f.sim.q.z, f.sim.q.w); return new THREE.Vector3(d[0], 0, d[2]).applyQuaternion(q).add(new THREE.Vector3(f.sim.pos.x, f.sim.pos.y, f.sim.pos.z)); }
+function nearestRide() {
+  let best = null, bd = 1e9;
+  const wp = new THREE.Vector3(walker.pos.x, walker.pos.y, walker.pos.z);
+  const dr = Math.hypot(roadster.pos.x - wp.x, roadster.pos.z - wp.z); if (dr < 3.4) { best = null; bd = dr - 0.6; }
+  for (const f of fleet) { const p = doorPoint(f), d = Math.hypot(p.x - wp.x, p.z - wp.z); if (d < 2.6 && d < bd) { best = f; bd = d; } }
+  return bd < 1e8 ? { f: best, d: bd } : null;
+}
 function board() {
+  setActive(null);
   walker.leave(); inCar = true;
   if (driver.root) driver.attach(view.seatRoot, false);
   rig.mode = S.cam; rig.cut(); applyCabin();
@@ -293,8 +410,11 @@ function board() {
 
 function tryEnter() {
   if (inCar || moves.busy || !walker.active) return;
-  const d = Math.hypot(car.pos.x - walker.pos.x, car.pos.z - walker.pos.z);
-  if (d > 3.4 || car.up.y < 0.6 || car.speed > 2) { ui.toast(d > 3.4 ? 'Walk up to the Roadster' : 'Wait for the car to stop', 1.4); return; }
+  const n = nearestRide();
+  if (n && n.f) { const s2 = n.f.sim; if (s2.up.y < 0.6 || s2.speed > 2) { ui.toast(s2.up.y < 0.6 ? 'It is on its roof' : 'Wait for it to stop', 1.4); return; } boardFleet(n.f); return; }
+  const d = Math.hypot(roadster.pos.x - walker.pos.x, roadster.pos.z - walker.pos.z);
+  if (d > 3.4 || roadster.up.y < 0.6 || roadster.speed > 2) { ui.toast(d > 3.4 ? 'Walk up to a car' : 'Wait for the car to stop', 1.4); return; }
+  setActive(null);
   if (!avatarOk || !driver.anim || !moves.enter(carObj, board)) { setDoor(true); board(); }
 }
 
@@ -302,6 +422,15 @@ function tryExit() {
   if (!inCar || moves.busy) return;
   if (car.speed > 1.5 || car.up.y < 0.85 || car.contacts < 3 || ramp.on) { ui.toast(ramp.on ? 'Get off the ramp first' : 'Stop the car to get out', 1.4); return; }
   if (!avatarOk) { ui.toast('Jurek stays in the car', 1.4); return; }
+  if (active) {
+    const p = doorPoint(active), gy = groundHeight(p.x, p.z, car.pos.y + 2.5); p.y = gy === null ? car.pos.y : gy;
+    const yaw = Math.atan2(car.left.x, car.left.z);
+    inCar = false; walker.enter(p.x, p.y + 0.02, p.z, yaw);
+    if (driver.root) { driver.root.visible = true; driver.attach(scene, true); }
+    rig.mode = 'foot'; rig.footYaw = car.yaw() + 0.9; rig.footPitch = 0.2; rig.cut(); applyCabin();
+    audio.play('door_open', { gain: 0.5 });
+    return;
+  }
   const p = new THREE.Vector3(1.45, 0, -0.15).applyQuaternion(carObj.curr.quat).add(carObj.curr.pos);
   const gy = groundHeight(p.x, p.z, car.pos.y + 2.5); p.y = gy === null ? car.pos.y : gy;
   const yaw = Math.atan2(car.left.x, car.left.z);
@@ -312,7 +441,7 @@ function tryExit() {
 }
 
 function applyCabin() {
-  const fpp = inCar && rig.mode === 'fpp' && !replay.active;
+  const fpp = inCar && rig.mode === 'fpp' && !replay.active && !active;
   view.setCabin(fpp); if (driver.ready) driver.setHeadVisible(!fpp);
 }
 
@@ -323,7 +452,43 @@ function startReplay() {
   smoke.clear(); lineup.reset(); applyCabin();
   if (driver.root && driver.root.parent !== view.seatRoot && !walker.active) driver.attach(view.seatRoot, false);
 }
-function stopReplay() { replay.stop(); smoke.clear(); lineup.reset(); rig.cut(); applyCabin(); }
+function stopReplay() { replay.stop(); ghost.active = false; smoke.clear(); lineup.reset(); rig.cut(); applyCabin(); }
+function capturePhoto() {
+  return new Promise((res) => {
+    const w = innerWidth, h = innerHeight, pr = Math.min(3840 / w, Math.max(2, window.devicePixelRatio || 1));
+    renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
+    const b = renderer.getDrawingBufferSize(new THREE.Vector2()); post.resize(b.x, b.y);
+    ghost.apply(camera); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    post.render(scene, camera, frameT);
+    canvas.toBlob((blob) => res(blob), 'image/png');
+    resize();
+  });
+}
+const photoMode = new PhotoMode({ post, ghost, touch: TOUCH, capture: capturePhoto, toast: (t) => ui.toast(t, 1.6) });
+function openPhoto() {
+  if (!started || paused || travel || fly || photo || showroom.active) return;
+  photo = { rp: replay.active ? replay.paused : null, ghost: ghost.active };
+  if (replay.active) replay.paused = true;
+  if (!ghost.active) ghost.start(camera);
+  const tp = new THREE.Vector3(...drawP.p); if (replay.active) tp.set(replay.pose.p[0], replay.pose.p[1], replay.pose.p[2]);
+  photoMode.open(camera.position.distanceTo(tp));
+  ui.showHud(false); document.body.classList.add('photo-on');
+  audio.setVolumes(S.musicVol, 0);
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+function closePhoto() {
+  if (!photo) return;
+  photoMode.close(); document.body.classList.remove('photo-on'); ui.showHud(true);
+  if (replay.active) { replay.paused = photo.rp; ghost.active = photo.ghost; } else ghost.active = false;
+  photo = null; rig.cut(); audio.setVolumes(S.musicVol, S.sfxVol);
+  if (!TOUCH) input.requestLock();
+}
+photoMode.onExit = closePhoto;
+function ghostMove() {
+  const k = (c) => input.down.has(c), t = (c) => input.touch.has(c), St = input.stick;
+  if (TOUCH) return { x: St.on ? St.x : 0, z: St.on ? St.y : 0, y: (t('KeyW') ? 1 : 0) - (t('KeyS') ? 1 : 0), fast: t('ShiftLeft') };
+  return { x: (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0), z: (k('KeyW') ? 1 : 0) - (k('KeyS') ? 1 : 0), y: (k('KeyE') ? 1 : 0) - (k('KeyQ') ? 1 : 0), fast: k('ShiftLeft') || k('ShiftRight') };
+}
 
 function toggleMenu(on) {
   if (!started) return;
@@ -335,29 +500,33 @@ ui.onOpenMenu = (tab) => ui.menu(true, { tab, title: 'Roadster Jump', sub: 'Sett
 ui.onReset = () => { toggleMenu(false); reset(); };
 ui.onReplay = () => { toggleMenu(false); startReplay(); };
 ui.onGoals = (v) => goals.setVisible(v);
+ui.onMp = (v) => { if (v) mpJoin(); else mpLeave(); ui.toast(v ? 'Multiplayer on' : 'Multiplayer off · playing solo', 1.6); };
+ui.onRename = (n) => net.rename(n || mpName());
 ui.onShowMode = (m) => showroom.setMode(m);
 ui.onAssist = (v) => { ui.toast(v ? 'Flight assist on' : 'Flight assist off · ×1.5 points', 1.6); };
 ui.onCam = (v) => { if (inCar) { rig.mode = v; rig.cut(); applyCabin(); } };
 ui.onVolume = () => audio.setVolumes(S.musicVol, S.sfxVol);
 ui.onSens = () => { rig.sens = S.sens; };
-input.onLockChange = (locked) => { if (!locked && started && !paused && !TOUCH && !window.__rjTest) toggleMenu(true); };
-canvas.addEventListener('click', () => { if (started && !paused && !TOUCH) input.requestLock(); });
+input.onLockChange = (locked) => { if (!locked && started && !paused && !photo && !TOUCH && !window.__rjTest) toggleMenu(true); };
+canvas.addEventListener('click', () => { if (started && !paused && !photo && !TOUCH) input.requestLock(); });
 
 function actions(dt) {
   const I = input;
+  if (photo) { if (I.hit('KeyO') || I.hit('Escape')) closePhoto(); return; }
+  if (started && !paused && I.hit('KeyO')) { openPhoto(); return; }
   if (I.hit('Escape')) { if (!started) { if (ui.menuOpen) ui.menu(false); } else if (TOUCH || !input.locked) toggleMenu(!paused); }
   if (!started) return;
   if (paused) return;
   if (replay.active) {
     if (I.hit('KeyP') || I.hit('Escape')) stopReplay();
-    if (I.hit('KeyC')) { replay.mode = replay.mode === 'tv' ? 'free' : 'tv'; replay.shot = null; }
+    if (I.hit('KeyC')) { replay.mode = replay.mode === 'tv' ? 'free' : 'tv'; replay.shot = null; if (replay.mode === 'free') ghost.start(camera); else ghost.active = false; }
     if (replay.mode === 'free' && I.hit('Space')) replay.paused = !replay.paused;
     return;
   }
   if (travel) return;
   if (I.hit('KeyL')) { startTravel(); return; }
-  if (I.hit('KeyE')) { if (inCar) tryExit(); else tryEnter(); }
-  if (I.hit('KeyF') && inCar) { car.fan = !car.fan; ui.toast(car.fan ? 'Suction on' : 'Suction off', 1.2); if (car.fan) goals.hit('fan'); }
+  if (I.hit('KeyE')) { if (inCar && !active && car.contacts < 2 && !moves.busy) { setDoor(door.target < 0.5); door.close = 0; } else if (inCar) tryExit(); else tryEnter(); }
+  if (I.hit('KeyF') && inCar) { if (active) ui.toast(`The ${active.info.name} has no suction fan`, 1.4); else { car.fan = !car.fan; ui.toast(car.fan ? 'Suction on' : 'Suction off', 1.2); if (car.fan) goals.hit('fan'); } }
   if (I.hit('KeyG')) { S.goals = !S.goals; ui.save(); ui.syncGoals(); goals.setVisible(S.goals); }
   if (I.hit('KeyC') && inCar) { const order = ['chase', 'level', 'fpp']; S.cam = order[(order.indexOf(S.cam) + 1) % 3]; ui.save(); rig.mode = S.cam; rig.cut(); applyCabin(); }
   if (I.hit('KeyR')) reset();
@@ -369,16 +538,20 @@ function actions(dt) {
 function promptText() {
   if (replay.active) return '';
   if (!inCar && walker.active && !moves.busy) {
-    const d = Math.hypot(car.pos.x - walker.pos.x, car.pos.z - walker.pos.z);
-    return d < 3.4 && car.up.y > 0.6 ? '<b>E</b>Get in' : '';
+    const n = nearestRide();
+    if (!n) return '';
+    if (n.f) return n.f.sim.up.y > 0.6 ? `<b>E</b>Drive the ${n.f.info.name}` : '';
+    return roadster.up.y > 0.6 ? '<b>E</b>Get in' : '';
   }
   if (inCar && !moves.busy) {
     const loc = rampLocate(car.pos.x, car.pos.y, car.pos.z);
-    if (!car.fan && car.fwdSpeed > 1 && car.pos.x > -14 && car.pos.x < 2 && Math.abs(car.pos.z) < 3 && car.up.y > 0.9 && loc.s < 3) return '<b>F</b>Suction is off. Turn it on to stick to the wall';
-    if (car.contacts >= 3 && LINEUP.approach(car.pos)) {
+    if (!active && !car.fan && car.fwdSpeed > 1 && car.pos.x > -14 && car.pos.x < 2 && Math.abs(car.pos.z) < 3 && car.up.y > 0.9 && loc.s < 3) return '<b>F</b>Suction is off. Turn it on to stick to the wall';
+    if (!active && car.contacts >= 3 && LINEUP.approach(car.pos)) {
       const dir = car.pos.x < LINEUP.stage.x0 ? 1 : -1, vx = car.vel.x * dir, d = ((LINEUP.stage.x0 + LINEUP.stage.x1) / 2 - car.pos.x) * dir, lead = vx * 1.6;
       if (vx > 5) return d > lead + 5 ? '<b>Space</b>Get ready to ollie over the lineup' : d > lead - 5 ? '<b>Space</b>Now. Hold to ollie · ← → kickflip' : '<b>S</b>Too late to clear it. Brake';
     }
+    if (!active && car.contacts === 0 && tricks.state === 'air' && tricks.air > 0.6 && tricks.air < 2.4 && door.target < 0.5 && session.jumps < 3) return '<b>E</b>Open the gullwing doors for style';
+    if (!active && tricks.state === 'ground' && tricks.sinceLand < 1.6 && car.contacts >= 3 && car.speed > 4 && session.jumps < 3) return '<b>↓</b>Hold to ride a manual on the rear wheels';
     if (stopT > 2 && car.up.y > 0.85 && !ramp.on) return '<b>E</b>Get out';
   }
   return '';
@@ -404,14 +577,15 @@ function frame(now) {
 function render(dt, stepPhys = true) {
   actions(dt);
   const [mx, my, wh] = input.consumeMouse();
-  if (replay.active && replay.mode === 'free') { replay.orbit.yaw -= mx * 0.004; replay.orbit.pitch = clamp(replay.orbit.pitch + my * 0.004, -0.15, 1.3); replay.orbit.dist = clamp(replay.orbit.dist * (1 + wh * 0.1), 3, 40); }
+  input.dragOk = (ghost.active || !!photo) && !TOUCH;
+  if (ghost.active) { ghost.look(mx, my, S.sens); ghost.wheel(wh); }
   else if (!showroom.active) rig.mouse(mx, my);
   if (showroom.active && wh) showroom.onWheel(wh);
   if (wh && rig.mode === 'foot' && !showroom.active) rig.footDist = clamp(rig.footDist * (1 + wh * 0.1), 2, 8);
-  if (stepPhys && started && !paused && !replay.active) {
+  if (stepPhys && started && !paused && !photo && !replay.active) {
     const m = input.move(); m.jump = m.jump || mv.jump; mv = m;
     acc += dt; let n = 0; const p0 = performance.now();
-    while (acc >= H && n < 10) { step(H); acc -= H; n++; }
+    while (acc >= H && n < 10) { stepClock = p0 - (acc - H) * 1000; step(H); acc -= H; n++; }
     perf.phys = perf.phys * 0.95 + (performance.now() - p0) * 0.05;
     if (n === 10) acc = 0;
   }
@@ -422,30 +596,40 @@ function render(dt, stepPhys = true) {
   let P;
   const scrub = replay.active && replay.mode === 'free' ? ((input.is('ArrowRight') ? 1 : 0) - (input.is('ArrowLeft') ? 1 : 0)) * dt * 2.5 : 0;
   if (showroom.active) P = showroom.update(dt, poseBuf);
-  else if (replay.active) P = replay.step(paused ? 0 : dt, scrub);
-  else { drawP.lerp(prevP, currP, acc / H); drawP.door = door.t; P = drawP; }
-  { const lp = rampLocate(P.p[0], P.p[1], P.p[2]); view.onRamp = lp.onDeck && lp.s > 1.5 && lp.h < 2.5; }
-  view.apply(P, dt);
+  else if (replay.active) P = replay.step(paused || photo ? 0 : dt, photo ? 0 : scrub);
+  else { drawP.lerp(prevP, currP, acc / H); if (car === roadster) drawP.door = door.t; P = drawP; }
+  let RP = P;
+  const pv = showroom.active ? 0 : Math.round(P.vid || 0);
+  if (!showroom.active) {
+    const k = acc / H;
+    if (pv !== 0) { rPose.draw.lerp(rPose.prev, rPose.curr, k); rPose.draw.door = door.t; RP = rPose.draw; }
+    for (const f of fleet) { let fp = f.draw; if (pv === f.i + 1) fp = P; else if (!f.asleep) f.draw.lerp(f.prev, f.curr, k); f.view.pose(fp.p, fp.q, fp.len, fp.spin, fp.steer, f.y0); }
+  }
+  { const lp = rampLocate(RP.p[0], RP.p[1], RP.p[2]); view.onRamp = lp.onDeck && lp.s > 1.5 && lp.h < 2.5; }
+  props.sync();
+  view.apply(RP, dt);
   if (showroom.active) showroom.afterApply();
   view.root.updateMatrixWorld(true);
   if (driver.ready && showroom.active && !fly) driver.root.visible = false;
   else if (driver.ready) {
-    if (replay.active) { if (!walker.active || inCar) { if (driver.root.parent !== view.seatRoot) driver.attach(view.seatRoot, false); driver.pose(view.driverView, dt, {}); } else driver.root.visible = false; }
+    if (replay.active) { if ((!walker.active || inCar) && pv === 0) { driver.root.visible = true; if (driver.root.parent !== view.seatRoot) driver.attach(view.seatRoot, false); driver.pose(view.driverView, dt, {}); } else driver.root.visible = false; }
     else {
       driver.root.visible = true;
       if (moves.busy) moves.render(dt);
       else if (walker.active) { walker.interpolate(acc / H); if (driver.root.parent !== scene) driver.attach(scene, true); driver.walkPose(walker, dt, { ground: (x, z) => { const g = groundHeight(x, z, walker.pos.y + 1); return g === null ? walker.pos.y : g; }, camYaw: rig.footYaw }); }
+      else if (active) driver.root.visible = false;
       else { if (driver.root.parent !== view.seatRoot) driver.attach(view.seatRoot, false); driver.pose(view.driverView, dt, {}); }
     }
   }
   if (showroom.active && !fly) { showroom.camPose(SHOW_TGT, camera.position); camera.up.set(0, 1, 0); camera.lookAt(SHOW_TGT); if (camera.fov !== 34) { camera.fov = 34; } }
-  else if (replay.active) replay.camera(camera, dt, P);
+  else if (replay.active) { if (ghost.active) { ghost.update(dt, ghostMove()); ghost.apply(camera); } else replay.camera(camera, dt, P); }
   else if (!inCar && (walker.active || moves.busy)) rig.foot(dt, moves.busy ? moves.w.pose : walker.pose);
   else {
     const pos = new THREE.Vector3(P.p[0], P.p[1], P.p[2]), quat = new THREE.Quaternion(P.q[0], P.q[1], P.q[2], P.q[3]);
-    rig.car(dt, { pos, quat, vel: new THREE.Vector3(P.vx, P.vy, P.vz), contacts: P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3], fwdSpeed: car.fwdSpeed, eye: view.eye(new THREE.Vector3()) });
+    rig.car(dt, { pos, quat, vel: new THREE.Vector3(P.vx, P.vy, P.vz), contacts: P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3], fwdSpeed: car.fwdSpeed, eye: active ? new THREE.Vector3(...active.info.seat).applyQuaternion(quat).add(pos) : view.eye(new THREE.Vector3()) });
   }
   if (travel) travelCamera(dt);
+  if (photo) { ghost.update(dt, ghostMove()); ghost.apply(camera); }
   if (camOverride) { const o = camOverride; camera.position.set(...o.pos); camera.up.set(0, 1, 0); camera.lookAt(...o.at); if (camera.fov !== o.fov) camera.fov = o.fov; }
   if (fly) {
     fly.t += dt; const u = Math.min(1, fly.t / fly.dur), e = u * u * u * (u * (u * 6 - 15) + 10);
@@ -457,23 +641,24 @@ function render(dt, stepPhys = true) {
   if (sx > 0.001) camera.setViewOffset(innerWidth, innerHeight, -innerWidth * sx, 0, innerWidth, innerHeight); else if (camera.view && camera.view.enabled) camera.clearViewOffset();
   camera.near = rig.mode === 'fpp' && inCar && !replay.active && !showroom.active ? 0.03 : 0.08; camera.updateProjectionMatrix();
   if (showroom.active && !fly) { const lab = showroom.label(); ui.tip(!!lab && !ui.menuOpen, showroom.pointer.x, showroom.pointer.y, lab && lab[0], lab && lab[1]); }
-  view.updateJets(camera, P);
+  view.updateJets(camera, RP);
+  if (started && net.on) { if (!replay.active && !photo) net.send(packMe(), roadster.speed > 0.2 || car.speed > 0.2 || (walker.active && walker.speed > 0.1) || door.t > 0.01 && door.t < 0.99); remotes.render(dt * (photo ? 0 : 1), performance.now(), camera, innerWidth, innerHeight, qs.get('smoke') !== '0' && !photo); }
   dynLights[0].pos.copy(view.jetLight.getWorldPosition(new THREE.Vector3()));
   view.heads[0].getWorldPosition(dynLights[1].wpos); dynLights[1].wdir.copy(view.heads[0].target.getWorldPosition(new THREE.Vector3())).sub(dynLights[1].wpos).normalize();
-  if (!paused && qs.get('smoke') !== '0') { const s0 = performance.now(); smoke.fromCar(dt * (replay.active ? replay.speed() : 1), P, view, events); events.land = 0; smoke.update(dt * (replay.active ? replay.speed() : 1), camera, smokeLights); perf.smoke = perf.smoke * 0.95 + (performance.now() - s0) * 0.05; }
+  if (!paused && !photo && qs.get('smoke') !== '0') { const s0 = performance.now(); smoke.fromCar(dt * (replay.active ? replay.speed() : 1), P, view, events); events.land = 0; smoke.update(dt * (replay.active ? replay.speed() : 1), camera, smokeLights); perf.smoke = perf.smoke * 0.95 + (performance.now() - s0) * 0.05; }
   const te = replay.active ? replay.t : simT;
   const loc = rampLocate(P.p[0], P.p[1], P.p[2]);
   ev.carS = (replay.active ? loc.onDeck && (P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3]) > 0 : ramp.on) ? loc.s : null;
   A.update(te, camera.position, ev);
   placeLights(travel ? (travel.t / travel.dur > 0.3 ? travel.to : travel.to === 'lineup' ? 'ramp' : 'lineup') : Math.hypot(camera.position.x - LINEUP.cx, camera.position.z - LINEUP.line) < 250 ? 'lineup' : 'ramp');
   scene.fog.density = FOG * (travel ? 1 - 0.72 * Math.sin(Math.PI * clamp(travel.t / travel.dur, 0, 1)) : 1);
-  lineup.update(paused ? 0 : dt * (replay.active ? replay.speed() : 1), te, P, qs.get('smoke') !== '0' ? smoke : null, lightsAt === 'lineup' ? siteSpot : null);
+  lineup.update(paused || photo ? 0 : dt * (replay.active ? replay.speed() : 1), te, P, qs.get('smoke') !== '0' ? smoke : null, lightsAt === 'lineup' ? siteSpot : null);
   if (audio.ctx || !showroom.active) audio.update(dt, P, { cam: camera, rate: replay.active ? replay.speed() : 1, inside: inCar && rig.mode === 'fpp' && !replay.active, load: inCar && !replay.active ? car.load : 0 });
   if (inCar && rig.mode === 'fpp') view.screen.draw(P.speed / 0.44704, P.fan, S.assist);
   const pr = started && !travel ? promptText() : '';
-  if (pr !== lastHint) { lastHint = pr; touch && touch.setEnter(/Get in/.test(pr) ? 'Get in' : /Get out/.test(pr) ? 'Get out' : null); }
+  if (pr !== lastHint) { lastHint = pr; touch && touch.setEnter(/Get in/.test(pr) ? 'Get in' : /Drive the/.test(pr) ? 'Drive' : /Get out/.test(pr) ? 'Get out' : /gullwing/.test(pr) ? 'Doors' : null); }
   if (touch) { touch.setFan(car.fan); touch.setGo(zone === 'lineup' ? 'Ramp' : 'Lineup'); }
-  if (started) ui.hud({ dt, mph: P.speed / 0.44704, gear: !inCar ? 'P' : car.gear === 'R' ? 'R' : car.parkedT > 1.2 ? 'P' : 'D', spool: car.fanSpool, hang: !replay.active && ramp.on && car.up.y < -0.7 ? tricks.ceil : 0, fan: car.fan, assist: S.assist, cam: inCar ? rig.mode : 'foot', go: zone === 'lineup' ? 'Ramp' : 'Lineup', valves: P.valve, live: replay.active ? null : tricks.live(), prompt: TOUCH ? (/Suction/.test(pr) ? 'Suction is off. Tap F to stick to the wall' : /Now\./.test(pr) ? 'Now. Hold Jets to ollie' : /ollie/.test(pr) ? 'Get ready to ollie over the lineup' : /Too late/.test(pr) ? 'Too late to clear it. Brake' : '') : pr, session: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} · ${session.total.toLocaleString('en-US')} pts` : '', replay: replay.active ? { p: replay.progress(), mode: replay.mode } : null, touch: TOUCH, fps: qs.has('debug') ? `${Math.round(fpsBuf.length / Math.max(0.001, fpsBuf.reduce((a, b) => a + b, 0)))} fps · ${scale.toFixed(2)}x` : '' });
+  if (started) ui.hud({ dt, mph: P.speed / 0.44704, gear: !inCar ? 'P' : car.gear === 'R' ? 'R' : car.parkedT > 1.2 ? 'P' : 'D', spool: car.fanSpool, hang: !replay.active && ramp.on && car.up.y < -0.7 ? tricks.ceil : 0, fan: car.fan, assist: S.assist, cam: inCar ? rig.mode : 'foot', go: zone === 'lineup' ? 'Ramp' : 'Lineup', valves: P.valve, live: replay.active ? null : tricks.live(), prompt: TOUCH ? (/Suction/.test(pr) ? 'Suction is off. Tap F to stick to the wall' : /Now\./.test(pr) ? 'Now. Hold Jets to ollie' : /ollie/.test(pr) ? 'Get ready to ollie over the lineup' : /Too late/.test(pr) ? 'Too late to clear it. Brake' : /manual/.test(pr) ? 'Pull the stick down to ride a manual' : '') : pr, online: net.count, session: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} · ${session.total.toLocaleString('en-US')} pts` : '', replay: replay.active ? { p: replay.progress(), mode: replay.mode } : null, touch: TOUCH, fps: qs.has('debug') ? `${Math.round(fpsBuf.length / Math.max(0.001, fpsBuf.reduce((a, b) => a + b, 0)))} fps · ${scale.toFixed(2)}x` : '' });
   const r0 = performance.now();
   if (window.__rjNoDraw) { perf.rend = 0; return; }
   if (qs.get('post') === '0') { renderer.setRenderTarget(null); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.render(scene, camera); } else post.render(scene, camera, frameT);
@@ -519,6 +704,7 @@ function play(o = {}) {
   started = true; ui.hideStart(); ui.showHud(true); touch && touch.show(true);
   audio.unlock(TOUCH).then(() => audio.setVolumes(S.musicVol, S.sfxVol));
   if (!TOUCH && !o.instant) input.requestLock();
+  mpJoin();
   showroom.end(); rig.cut(); rig.fov = camera.fov;
   if (o.instant) { showroom.finish(); viewShift = 0; } else fly = { t: 0, dur: 1.6, pos: camera.position.clone(), quat: camera.quaternion.clone(), fov: camera.fov };
   ui.toast(inCar ? 'F suction · Shift boost · Space jets' : (TOUCH ? 'Walk to the Roadster and tap Get in' : 'Walk to the Roadster · E to get in'), 3.2);
@@ -526,9 +712,12 @@ function play(o = {}) {
 ui.ready(play);
 
 window.__rj = {
-  ready: true, perf, showroom, goals, Q, car, phys, view, rec, replay, tricks, ui, S, ev, ramp, driver, walker, lineup, LINEUP, renderer, scene,
+  ready: true, perf, showroom, goals, Q, car: roadster, phys, view, rec, replay, tricks, ui, S, ev, ramp, driver, walker, lineup, LINEUP, renderer, scene, fleet,
+  vehicle: () => car,
+  drive: (i) => { if (inCar) { inCar = false; walker.enter(car.pos.x + 3, 0.02, car.pos.z, 0); } if (i === null) { setActive(null); board(); } else boardFleet(fleet[i]); },
   lineupStart: () => { zone = 'lineup'; reset(); },
   rampStart: () => { zone = 'ramp'; reset(); },
+  openPhoto, closePhoto, photoMode, post, ghost, capturePhoto, props, net, remotes,
   travel: () => { startTravel(); return !!travel; },
   traveling: () => (travel ? { t: travel.t, dur: travel.dur, to: travel.to } : null),
   zone: () => zone,

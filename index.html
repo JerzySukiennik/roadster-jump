@@ -46,13 +46,28 @@
     <div id="resParts" class="res-parts"></div>
     <div id="resRank" class="res-rank"></div>
   </div>
-  <div class="hud-right"><div class="best-l">Best jump</div><div id="best" class="best">0</div><div id="session" class="session"></div></div>
+  <div class="hud-right"><div class="best-l">Best jump</div><div id="best" class="best">0</div><div id="session" class="session"></div><div id="online" class="online"></div></div>
+  <div id="tags" class="tags"></div>
   <div id="prompt" class="prompt"></div>
   <div id="toast" class="toast"></div>
   <div id="place" class="place"><div class="place-k">Roadster Jump</div><div id="placeName" class="place-n"></div><div id="placeSub" class="place-s"></div></div>
   <div id="replay" class="replay"><span class="rp-dot"></span><span class="rp-tag">Replay</span><div class="rp-bar"><i id="rpFill"></i></div><span id="rpMode" class="rp-mode">TV</span><span class="rp-help" id="rpHelp">C free cam · P exit</span></div>
   <div id="fps" class="fps"></div>
 </div>
+
+<div id="photo" class="photo hidden">
+  <div class="ph-bar">
+    <label class="ph-ctl"><span>FOV</span><input id="phFov" type="range" min="15" max="100" step="1" value="50"><b id="phFovV"></b></label>
+    <label class="ph-ctl"><span>Focus</span><input id="phFocus" type="range" min="0" max="100" step="1" value="40"><b id="phFocusV"></b></label>
+    <label class="ph-ctl"><span>Blur</span><input id="phBlur" type="range" min="0" max="100" step="1" value="0"><b id="phBlurV"></b></label>
+    <label class="ph-ctl"><span>Exposure</span><input id="phExp" type="range" min="-20" max="20" step="1" value="0"><b id="phExpV"></b></label>
+    <label class="ph-ctl"><span>Tilt</span><input id="phRoll" type="range" min="-30" max="30" step="1" value="0"><b id="phRollV"></b></label>
+    <div class="seg ph-look" id="phLook"><button data-v="natural" class="on">Natural</button><button data-v="film">Film</button><button data-v="noir">Noir</button></div>
+    <div class="ph-btns"><button id="phSave" class="btn primary">Save photo</button><button id="phExit" class="btn ghost">Done</button></div>
+  </div>
+  <div id="phTip" class="ph-tip"></div>
+</div>
+<div id="phFlash" class="ph-flash"></div>
 
 <div id="touch" class="touch hidden">
   <div id="stick" class="stick"><div id="knob" class="knob"></div></div>
@@ -66,6 +81,7 @@
     <div class="ts" data-t="KeyF">F</div>
     <div class="ts" data-t="KeyC">Cam</div>
     <div class="ts ts-go" data-t="KeyL" id="tGo">Lineup</div>
+    <div class="ts" data-t="KeyO">Photo</div>
     <div class="ts" data-t="KeyR">Reset</div>
     <div class="ts" data-t="KeyP">Replay</div>
     <div class="ts" data-t="Escape">Menu</div>
@@ -127,6 +143,7 @@
         <div class="row"><div><div class="row-l">Flight assist</div><div class="row-d">Stops the spin when you let go, rolls the wheels down before touchdown and turns Jets into a soft landing. Off gives ×1.5 points.</div></div><button id="optAssist" class="tog on" aria-label="Flight assist"></button></div>
         <div class="row"><div class="row-l">Camera</div><div class="seg" id="optCam"><i class="seg-ink"></i><button data-v="chase">Chase</button><button data-v="level">Horizon</button><button data-v="fpp">Cockpit</button></div></div>
         <div class="row"><div class="row-l">Film stunts list</div><button id="optGoals" class="tog on" aria-label="Film stunts list"></button></div>
+        <div class="row"><div><div class="row-l">Multiplayer</div><div class="row-d">Share the arena with everyone playing right now. Cars really collide.</div></div><button id="optMp" class="tog on" aria-label="Multiplayer"></button></div>
         <div class="sec">Display</div>
         <div class="row"><div><div class="row-l">Graphics</div><div class="row-d" id="qNote">Auto picks the best look this device can run smoothly.</div></div><div class="seg" id="optQ"><i class="seg-ink"></i><button data-v="auto">Auto</button><button data-v="high">High</button><button data-v="low">Low</button></div></div>
         <div class="sec">Sound</div>
@@ -145,7 +162,7 @@
       <div class="tab hidden" data-tab="keys">
         <div class="keys-tip desk">Press any key to see what it does.</div>
         <div class="kb desk" id="kb">
-          <div class="kb-row"><span class="k" data-code="Escape">Esc</span><span class="gap"></span><span class="k" data-code="KeyR">R</span><span class="k" data-code="KeyT">T</span><span class="k" data-code="KeyP">P</span><span class="k" data-code="KeyM">M</span><span class="k" data-code="KeyG">G</span><span class="k" data-code="KeyL">L</span></div>
+          <div class="kb-row"><span class="k" data-code="Escape">Esc</span><span class="gap"></span><span class="k" data-code="KeyR">R</span><span class="k" data-code="KeyT">T</span><span class="k" data-code="KeyP">P</span><span class="k" data-code="KeyM">M</span><span class="k" data-code="KeyG">G</span><span class="k" data-code="KeyL">L</span><span class="k" data-code="KeyO">O</span></div>
           <div class="kb-row"><span class="k" data-code="KeyE">E</span><span class="k wide" data-code="KeyW">W</span><span class="k" data-code="KeyF">F</span><span class="k" data-code="KeyC">C</span><span class="gap"></span><span class="k" data-code="ArrowUp">↑</span></div>
           <div class="kb-row"><span class="k wide" data-code="KeyA">A</span><span class="k wide" data-code="KeyS">S</span><span class="k wide" data-code="KeyD">D</span><span class="gap"></span><span class="k" data-code="ArrowLeft">←</span><span class="k" data-code="ArrowDown">↓</span><span class="k" data-code="ArrowRight">→</span></div>
           <div class="kb-row"><span class="k xwide" data-code="ShiftLeft">Shift</span><span class="k space" data-code="Space">Space</span></div>
@@ -158,10 +175,13 @@
           <div><b>Shift</b><span>Rear thrusters boost</span></div>
           <div><b>Space</b><span>Jets: tap to hop, hold to ollie, soft landing in the air</span></div>
           <div><b>L</b><span>Fly out to the Tesla lineup and back to the curl</span></div>
+          <div><b>O</b><span>Photo mode: freeze, fly around, focus, blur and save a PNG</span></div>
+          <div><b>↓ / ↑ on the ground</b><span>Manual on the rear wheels, nose manual on the front</span></div>
+          <div><b>E in the air</b><span>Open the gullwing doors for style points</span></div>
           <div><b>Arrows</b><span>↑ ↓ flip, ← → kickflip roll</span></div>
           <div><b>E</b><span>Get in or out</span></div>
           <div><b>C</b><span>Camera: chase, horizon, cockpit</span></div>
-          <div><b>P</b><span>Replay the last jump (C: TV or free, Space pause, ← → scrub)</span></div>
+          <div><b>P</b><span>Replay the last jump (C: TV or free fly with WASD, Q/E and the mouse, Space pause, ← → scrub)</span></div>
           <div><b>R · T · M · G</b><span>Reset, flight assist, music, stunts list</span></div>
         </div>
         <div class="keys-mob mob">Left stick steers. In the air it flips and rolls. Go and Brake drive, Boost fires the rear jets, hold Jets on the ground to ollie and in the air to brake the fall. F turns suction on. Lineup flies to the Teslas and back. Drag anywhere else to look around.</div>

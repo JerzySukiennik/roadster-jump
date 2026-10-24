@@ -1,4 +1,4 @@
-// Roadster Jump replay: a 60 Hz ring buffer of packed car poses with event marks (ramp entry, takeoff, landing), and playback of the last jump either through the TV director (ramp: tele from behind the run-in, wide side, low under the lip; lineup: tele behind the approach, the straight-on front shot from the film, low three-quarter at the exit end; landing cam and slow motion in the air for both) or a free orbit camera with pause, scrub and zoom.
+// Roadster Jump replay: a 60 Hz ring buffer of packed car poses with event marks (ramp entry, takeoff, landing), and playback of the last jump either through the TV director (ramp: tele from behind the run-in, wide side, low under the lip; lineup: tele behind the approach, the straight-on front shot from the film, low three-quarter at the exit end; landing cam and slow motion in the air for both) or the ghost camera flown by the player (main.js) with pause and scrub.
 import * as THREE from 'three';
 import { CarPose } from './carView.js';
 import { rampLocate } from './ramp.js';
@@ -52,7 +52,7 @@ export class Replay {
   constructor(rec) {
     this.rec = rec; this.active = false; this.mode = 'tv'; this.t = 0; this.paused = false;
     this.pose = new CarPose(); this.a = new CarPose(); this.b = new CarPose();
-    this.orbit = { yaw: 0.8, pitch: 0.25, dist: 9 }; this.shot = null; this.shotStart = 0;
+    this.orbit = { yaw: 0.8 }; this.shot = null; this.shotStart = 0;
     this._v = new THREE.Vector3(); this._c = new THREE.Vector3(); this.focus = new THREE.Vector3(); this.focusInit = false;
   }
 
@@ -77,7 +77,7 @@ export class Replay {
     const J = this.J;
     if (this.mode === 'free' && scrub) this.t += scrub;
     this.t += dt * this.speed();
-    if (this.t > J.t1) { if (this.mode === 'tv') this.t = J.t0; else this.t = J.t1; }
+    if (this.t > J.t1) this.t = J.t0 + (this.t - J.t1) % Math.max(0.01, J.t1 - J.t0);
     if (this.t < J.t0) this.t = J.t0;
     this.rec.sample(this.t, this.pose, this.a, this.b);
     return this.pose;
@@ -102,24 +102,17 @@ export class Replay {
     if (!this.focusInit) { this.focus.copy(com); this.focusInit = true; }
     this.focus.lerp(com, 1 - Math.exp(-dt * 7));
     let pos, fov = 40, tg = this.focus;
-    if (this.mode === 'free') {
-      const o = this.orbit;
-      pos = tg.clone().add(new THREE.Vector3(Math.sin(o.yaw) * Math.cos(o.pitch), Math.sin(o.pitch), Math.cos(o.yaw) * Math.cos(o.pitch)).multiplyScalar(o.dist));
-      if (pos.y < 0.2) pos.y = 0.2;
-      fov = 50;
-    } else {
-      const shot = this.pickShot(P);
-      if (shot !== this.shot) { this.shot = shot; this.focus.copy(com); }
-      const frame = (p, size) => { const d = p.distanceTo(tg); return Math.max(4, Math.min(60, 2 * Math.atan(size / d) * 180 / Math.PI)); };
-      if (shot === 'tele') { pos = new THREE.Vector3(-43.2, 0.95, -0.3); fov = frame(pos, 4.2); }
-      else if (shot === 'side') { pos = new THREE.Vector3(-46, 3.5, 30); fov = frame(pos, 9); }
-      else if (shot === 'lip') { pos = new THREE.Vector3(-21, 0.5, 6.5); fov = 58; }
-      else if (shot === 'lapp') { const S = LINEUP.stage; pos = new THREE.Vector3(this.J.dir > 0 ? S.x0 - 46 : S.x1 + 46, 1.0, LINEUP.line + 2.2); fov = frame(pos, 5); }
-      else if (shot === 'lfront') { const S = LINEUP.stage, mid = new THREE.Vector3((S.x0 + S.x1) / 2, 2.8, (S.z0 + S.z1) / 2); tg = mid.lerp(this.focus, 0.35); pos = new THREE.Vector3(mid.x, 1.3, S.z0 - 22); fov = 40; }
-      else if (shot === 'lside') { const S = LINEUP.stage; pos = new THREE.Vector3(this.J.dir > 0 ? S.x1 + 9 : S.x0 - 9, 0.75, S.z0 - 8); fov = frame(pos, 7.5); }
-      else if (shot === 'land') { const L = this.J.landPos || { x: -55, z: 0 }; pos = new THREE.Vector3(L.x - 9, 0.6, L.z + 9); fov = frame(pos, 7); }
-      else { const o = this.orbit; o.yaw += dt * 0.25; pos = tg.clone().add(new THREE.Vector3(Math.sin(o.yaw) * 9, 2.4, Math.cos(o.yaw) * 9)); fov = 45; }
-    }
+    const shot = this.pickShot(P);
+    if (shot !== this.shot) { this.shot = shot; this.focus.copy(com); }
+    const frame = (p, size) => { const d = p.distanceTo(tg); return Math.max(4, Math.min(60, 2 * Math.atan(size / d) * 180 / Math.PI)); };
+    if (shot === 'tele') { pos = new THREE.Vector3(-43.2, 0.95, -0.3); fov = frame(pos, 4.2); }
+    else if (shot === 'side') { pos = new THREE.Vector3(-46, 3.5, 30); fov = frame(pos, 9); }
+    else if (shot === 'lip') { pos = new THREE.Vector3(-21, 0.5, 6.5); fov = 58; }
+    else if (shot === 'lapp') { const S = LINEUP.stage; pos = new THREE.Vector3(this.J.dir > 0 ? S.x0 - 46 : S.x1 + 46, 1.0, LINEUP.line + 2.2); fov = frame(pos, 5); }
+    else if (shot === 'lfront') { const S = LINEUP.stage, mid = new THREE.Vector3((S.x0 + S.x1) / 2, 2.8, (S.z0 + S.z1) / 2); tg = mid.lerp(this.focus, 0.35); pos = new THREE.Vector3(mid.x, 1.3, S.z0 - 22); fov = 40; }
+    else if (shot === 'lside') { const S = LINEUP.stage; pos = new THREE.Vector3(this.J.dir > 0 ? S.x1 + 9 : S.x0 - 9, 0.75, S.z0 - 8); fov = frame(pos, 7.5); }
+    else if (shot === 'land') { const L = this.J.landPos || { x: -55, z: 0 }; pos = new THREE.Vector3(L.x - 9, 0.6, L.z + 9); fov = frame(pos, 7); }
+    else { const o = this.orbit; o.yaw += dt * 0.25; pos = tg.clone().add(new THREE.Vector3(Math.sin(o.yaw) * 9, 2.4, Math.cos(o.yaw) * 9)); fov = 45; }
     cam.position.copy(pos); cam.up.set(0, 1, 0); cam.lookAt(tg);
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
     return this.shot;

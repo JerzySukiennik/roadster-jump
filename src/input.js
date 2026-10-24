@@ -43,7 +43,7 @@ export class Input {
     const rate = target === 0 ? 7 : Math.sign(target) !== Math.sign(this.steer) && this.steer !== 0 ? 9 : 5;
     this.steer += Math.max(-rate * dt, Math.min(rate * dt, target - this.steer));
     const S = this.stick, sx = S.on ? S.x : 0, sy = S.on ? S.y : 0;
-    const pitch = (k('ArrowUp') ? 1 : 0) - (k('ArrowDown') ? 1 : 0) + (airborne ? sy : 0);
+    const pitch = (k('ArrowUp') ? 1 : 0) - (k('ArrowDown') ? 1 : 0) + (airborne ? sy : Math.abs(sy) > 0.7 && Math.abs(sx) < 0.5 ? sy : 0);
     const roll = (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0) + (airborne ? sx : 0);
     return {
       throttle: k('KeyW') ? 1 : 0,

@@ -2,14 +2,55 @@
   "scores": {
     "$board": {
       ".read": "auth != null && ($board === 'score' || $board === 'dist' || $board === 'spin')",
-      ".indexOn": ["v"],
+      ".indexOn": [
+        "v"
+      ],
       "$uid": {
         ".write": "auth != null && auth.uid === $uid && ($board === 'score' || $board === 'dist' || $board === 'spin')",
         ".validate": "newData.hasChildren(['n', 'v', 't']) && (!data.exists() || newData.child('v').val() >= data.child('v').val())",
-        "n": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16" },
-        "v": { ".validate": "newData.isNumber() && newData.val() > 0 && (($board === 'score' && newData.val() <= 200000) || ($board === 'dist' && newData.val() <= 400) || ($board === 'spin' && newData.val() <= 20000))" },
-        "t": { ".validate": "newData.isNumber() && newData.val() <= now + 60000" },
-        "$other": { ".validate": false }
+        "n": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16"
+        },
+        "v": {
+          ".validate": "newData.isNumber() && newData.val() > 0 && (($board === 'score' && newData.val() <= 200000) || ($board === 'dist' && newData.val() <= 400) || ($board === 'spin' && newData.val() <= 20000))"
+        },
+        "t": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  },
+  "rooms": {
+    ".read": "auth != null",
+    "$room": {
+      ".validate": "$room.matches(/^r[0-9]{1,2}$/)",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+      }
+    }
+  },
+  "live": {
+    "$room": {
+      ".read": "auth != null && $room.matches(/^r[0-9]{1,2}$/)",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && $room.matches(/^r[0-9]{1,2}$/)",
+        ".validate": "newData.hasChildren(['n', 's', 't'])",
+        "n": {
+          ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 16"
+        },
+        "s": {
+          ".validate": "newData.isString() && newData.val().length <= 400 && newData.val().beginsWith('v1|')"
+        },
+        "t": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        },
+        "$other": {
+          ".validate": false
+        }
       }
     }
   }

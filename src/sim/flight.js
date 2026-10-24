@@ -1,4 +1,4 @@
-// Roadster Jump flight computer (adapted from Roadster 88): maps player intent to cold-gas thrust: ground boost and retro, the jet ollie (tap for a hop, hold to keep firing up to about 8 m, flip and roll already on the way up), ballistic air with rate control for flips and spins, lift, and the optional flight assist (stops the spin when the keys are released, rolls the wheels down before touchdown, turns lift into a soft-landing glide) through the control allocator.
+// Roadster Jump flight computer (adapted from Roadster 88): maps player intent to cold-gas thrust: ground boost and retro, the jet ollie (tap for a hop, hold to keep firing up to about 9 m, flip and roll already on the way up), the manual (pitch on the ground tips the car onto the front or rear wheels), ballistic air with rate control for flips and spins, lift, and the optional flight assist (stops the spin when the keys are released, rolls the wheels down before touchdown, turns lift into a soft-landing glide) through the control allocator.
 import { V3, Quat, clamp, DEG, MPH } from './math.js';
 import { Allocator } from './allocator.js';
 
@@ -68,7 +68,11 @@ export class FlightComputer {
     this.leveling = 0;
     this.timeToImpact = v.y < -0.5 ? s.clearance / -v.y : 99;
 
-    if (this.mode === 'ground') {
+    if (this.mode === 'ground' && Math.abs(inp.pitch) > 0.05 && s.speed > 2 && !(inp.boost && inp.brake)) {
+      th.requestFront();
+      this.wantT.x = I.pitch * F.rate_gain * (inp.pitch * 70 * DEG - w.x);
+      if (inp.boost) fw.addScaled(fh, rearMax * gov);
+    } else if (this.mode === 'ground') {
       const boost = inp.boost && !inp.brake, retro = inp.boost && inp.brake;
       this.alloc.clear();
       if (retro) th.requestFront();
@@ -78,7 +82,7 @@ export class FlightComputer {
       return;
     }
 
-    if (this.mode === 'hop') {
+    else if (this.mode === 'hop') {
       const upHop = this._v.set(0, 1, 0).applyQuat(q).y;
       fw.set(0, 1, 0).applyQuat(q).scale((rearMax + frontMax + 0.6 * sideMax) * clamp((upHop - 0.35) / 0.5, 0, 1));
       if (inp.boost) fw.addScaled(fh, rearMax * gov);
@@ -89,7 +93,7 @@ export class FlightComputer {
         this.rates(inp, w, I);
         if (this.assist && Math.abs(inp.pitch) < 0.05 && Math.abs(inp.roll) < 0.05) this.level(q, fwdW, v, w, I, inp);
       }
-    } else {
+    } else if (this.mode === 'air') {
       if (inp.boost) fw.addScaled(fh, rearMax * gov);
       this.rates(inp, w, I);
       const upY = this._v.set(0, 1, 0).applyQuat(q).y;
