@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Roadster Jump</title>
+<meta name="description" content="Drive the Roadster up a giant curl ramp on suction, hang upside down from the ceiling and kickflip off the lip on cold-gas thrusters.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23000'/%3E%3Cpath d='M9 24V13a6 6 0 0 1 12 0v3' fill='none' stroke='%23ff2b20' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='21' cy='21' r='3' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.21.0/dist/rapier.mjs"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div id="hud" class="hud hidden">
+  <div class="hud-left">
+    <div class="speed"><span id="mph">0</span><span class="unit">mph</span></div>
+    <div id="dots" class="dots"></div>
+    <div class="chips">
+      <span id="chipFan" class="chip"><b>F</b>Suction</span>
+      <span id="chipAssist" class="chip on"><b>T</b>Assist</span>
+      <span id="chipCam" class="chip"><b>C</b><i id="camName">Chase</i></span>
+    </div>
+  </div>
+  <div id="trick" class="trick"><div id="trickBig" class="trick-big"></div><div id="trickSub" class="trick-sub"></div></div>
+  <div id="result" class="result"><div id="resNames" class="res-names"></div><div id="resQuality" class="res-q"></div><div id="resPts" class="res-pts"></div><div id="resStats" class="res-stats"></div></div>
+  <div class="hud-right"><div class="best-l">Best jump</div><div id="best" class="best">0</div><div id="session" class="session"></div></div>
+  <div id="prompt" class="prompt"></div>
+  <div id="toast" class="toast"></div>
+  <div id="replay" class="replay"><span class="rp-tag">Replay</span><div class="rp-bar"><i id="rpFill"></i></div><span id="rpMode" class="rp-mode">TV</span><span class="rp-help" id="rpHelp">C free cam · P exit</span></div>
+  <div id="fps" class="fps"></div>
+</div>
+
+<div id="touch" class="touch hidden">
+  <div id="stick" class="stick"><div id="knob" class="knob"></div></div>
+  <div class="tbtns">
+    <div class="tb tb-jet" data-k="Space">Jets</div>
+    <div class="tb tb-boost" data-k="ShiftLeft">Boost</div>
+    <div class="tb tb-brake" data-k="KeyS">Brake</div>
+    <div class="tb tb-gas" data-k="KeyW">Go</div>
+  </div>
+  <div class="tsmall">
+    <div class="ts" data-t="KeyF">F</div>
+    <div class="ts" data-t="KeyC">Cam</div>
+    <div class="ts" data-t="KeyR">Reset</div>
+    <div class="ts" data-t="KeyP">Replay</div>
+    <div class="ts" data-t="Escape">Menu</div>
+  </div>
+  <div id="tEnter" class="tenter" data-t="KeyE">Get in</div>
+</div>
+
+<div id="start" class="screen">
+  <div class="start-card">
+    <div class="title">Roadster Jump</div>
+    <div class="sub">Suction up the curl. Hang from the ceiling. Kickflip off the lip.</div>
+    <div id="loadWrap" class="load"><div class="load-bar"><i id="loadBar"></i></div><div id="loadText" class="load-text">Loading</div></div>
+    <label class="name-row"><span>Name for the leaderboards</span><input id="nameIn" maxlength="16" autocomplete="off" spellcheck="false" placeholder="optional"></label>
+    <button id="play" class="play" disabled>Loading</button>
+    <div class="keys desk">
+      <div><b>W A S D</b> drive · on foot walk</div><div><b>F</b> suction on / off</div>
+      <div><b>Shift</b> boost thrusters</div><div><b>Space</b> jets (soft landing)</div>
+      <div><b>Arrows</b> flip and roll in the air</div><div><b>A D</b> spin in the air</div>
+      <div><b>E</b> get in / out</div><div><b>C</b> camera · <b>P</b> replay</div>
+      <div><b>R</b> reset · <b>T</b> flight assist</div><div><b>M</b> music · <b>Esc</b> menu</div>
+    </div>
+    <div class="keys mob">Left stick steers, in the air it flips and rolls. Hold Jets to brake the fall.</div>
+  </div>
+</div>
+
+<div id="menu" class="screen hidden">
+  <div class="menu-card">
+    <div class="tabs"><button data-tab="play" class="on">Game</button><button data-tab="boards">Leaderboards</button><button data-tab="keys">Controls</button></div>
+    <div class="tab" data-tab="play">
+      <div class="row"><span>Flight assist</span><button id="optAssist" class="tog on"></button></div>
+      <div class="row sub-row">Stops the spin when you let go, rolls the wheels down before touchdown and turns Jets into a soft landing. Off gives ×1.5 points.</div>
+      <div class="row"><span>Camera</span><div class="seg" id="optCam"><button data-v="chase">Chase</button><button data-v="level">Horizon</button><button data-v="fpp">Cockpit</button></div></div>
+      <div class="row"><span>Graphics</span><div class="seg" id="optQ"><button data-v="auto">Auto</button><button data-v="high">High</button><button data-v="low">Low</button></div></div>
+      <div class="row"><span>Music</span><input id="optMusic" type="range" min="0" max="1" step="0.05"></div>
+      <div class="row"><span>Sound</span><input id="optSfx" type="range" min="0" max="1" step="0.05"></div>
+      <div class="row row-mouse"><span>Mouse</span><input id="optSens" type="range" min="0.3" max="2.5" step="0.05"></div>
+      <div class="row"><span>Name</span><input id="optName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="for the leaderboards"></div>
+    </div>
+    <div class="tab hidden" data-tab="boards">
+      <div class="seg wide" id="boardSel"></div>
+      <div id="boardList" class="board"></div>
+      <div id="boardMine" class="board-mine"></div>
+    </div>
+    <div class="tab hidden" data-tab="keys">
+      <div class="keys2">
+        <div><b>W / S</b><span>throttle / brake, hold S to reverse</span></div>
+        <div><b>A / D</b><span>steer, spin in the air</span></div>
+        <div><b>F</b><span>suction fan: sticks the car to the wall and ceiling</span></div>
+        <div><b>Shift</b><span>rear thrusters boost</span></div>
+        <div><b>Space</b><span>jets: hop on the ground, soft landing in the air</span></div>
+        <div><b>Arrows</b><span>↑ ↓ flip, ← → kickflip roll</span></div>
+        <div><b>E</b><span>get in / get out</span></div>
+        <div><b>C</b><span>camera: chase, horizon, cockpit</span></div>
+        <div><b>P</b><span>replay the last jump (C: TV / free, Space pause, ← → scrub)</span></div>
+        <div><b>R</b><span>reset the car to the start</span></div>
+        <div><b>T</b><span>flight assist on / off</span></div>
+        <div><b>M</b><span>music on / off</span></div>
+      </div>
+    </div>
+    <button id="resume" class="play">Resume</button>
+  </div>
+</div>
+
+<div id="rotate" class="rotate">Turn your phone sideways</div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
