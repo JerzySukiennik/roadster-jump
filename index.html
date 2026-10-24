@@ -27,8 +27,9 @@
 
 <div id="hud" class="hud hidden">
   <div class="hud-left">
-    <div class="speed"><span id="mph" class="mph">0</span><span class="speed-side"><span id="gear" class="gear">D</span><span class="unit">mph</span></span></div>
-    <div id="dots" class="dots"></div>
+    <div class="speed"><span id="prnd" class="prnd"><i data-g="P">P</i><i data-g="R">R</i><i data-g="N">N</i><i data-g="D" class="on">D</i></span><span id="mph" class="mph">0</span></div>
+    <div class="spd-row"><span class="unit">mph</span><span class="pwr" aria-hidden="true"><i id="pwrRegen"></i><b></b><i id="pwrDrive"></i></span></div>
+    <div id="dots" class="noz" aria-hidden="true"></div>
     <div class="chips">
       <span id="chipFan" class="chip"><b>F</b>Suction<i class="spool"><i id="spool"></i></i></span>
       <span id="chipAssist" class="chip on"><b>T</b>Assist</span>
@@ -38,7 +39,8 @@
   </div>
   <div id="goals" class="goals"><div class="goals-head"><span>Film stunts</span><span id="goalsCount" class="goals-count">0/7</span></div><div id="goalsList" class="goals-list"></div><div class="goals-foot"><b>G</b> hide</div></div>
   <div id="goalPill" class="goal-pill"></div>
-  <div id="trick" class="trick"><div id="trickBig" class="trick-big"></div><div id="trickSub" class="trick-sub"></div><div id="trickMeta" class="trick-meta"></div></div>
+  <div id="trick" class="trick"><div class="trick-row"><div id="trickBig" class="trick-big"></div><div id="att" class="att" aria-hidden="true"><svg viewBox="-30 -30 60 60"><circle class="att-ring" r="27"/><path class="att-tick" d="M0 -27 V-22 M0 22 V27 M-27 0 H-22 M22 0 H27"/><line id="attH" class="att-h" x1="-24" x2="24" y1="0" y2="0"/><g id="attCar"><path class="att-body" d="M-15 3 V-3 Q-15 -6 -12 -6 H-8 L-5 -11 H5 L8 -6 H12 Q15 -6 15 -3 V3 Z"/><rect class="att-wheel" x="-13.5" y="3" width="6" height="6" rx="1.5"/><rect class="att-wheel" x="7.5" y="3" width="6" height="6" rx="1.5"/></g></svg></div></div><div id="trickSub" class="trick-sub"></div><div id="trickMeta" class="trick-meta"></div></div>
+  <div id="combo" class="combo"><b id="comboN"></b><span id="comboL"></span><i><u id="comboBar"></u></i></div>
   <div id="result" class="result">
     <div id="resNames" class="res-names"></div>
     <div id="resQuality" class="res-q"></div>
@@ -46,15 +48,17 @@
     <div id="resParts" class="res-parts"></div>
     <div id="resRank" class="res-rank"></div>
   </div>
-  <div class="hud-right"><div class="best-l">Best jump</div><div id="best" class="best">0</div><div id="session" class="session"></div><div id="online" class="online"></div></div>
+  <div class="hud-right"><div class="best-l">Best jump</div><div id="best" class="best">0</div><div id="session" class="session"></div><div id="online" class="online"></div><div id="feed" class="feed"></div></div>
   <div id="tags" class="tags"></div>
   <div id="prompt" class="prompt"></div>
   <div id="toast" class="toast"></div>
   <div id="place" class="place"><div class="place-k">Roadster Jump</div><div id="placeName" class="place-n"></div><div id="placeSub" class="place-s"></div></div>
-  <div id="replay" class="replay"><span class="rp-dot"></span><span class="rp-tag">Replay</span><div class="rp-bar"><i id="rpFill"></i></div><span id="rpMode" class="rp-mode">TV</span><span class="rp-help" id="rpHelp">C free cam · P exit</span></div>
+  <div id="replay" class="replay"><span class="rp-dot"></span><span class="rp-tag" id="rpTag">Replay</span><div class="rp-bar"><i id="rpFill"></i></div><span id="rpMode" class="rp-mode">TV</span><span class="rp-help" id="rpHelp">C free cam · P exit</span><span class="rp-clip"><span class="rp-fmt" id="rpFmt"><button data-v="wide" class="on">16:9</button><button data-v="tall">9:16</button></span><button id="rpRec" class="rp-rec">Save clip</button></span></div>
+  <canvas id="radar" class="radar" aria-hidden="true"></canvas>
   <div id="fps" class="fps"></div>
 </div>
 
+<div id="phFrame" class="ph-frame"><div id="phBox" class="ph-box"><i></i><i></i><i></i><i></i><em id="phSize"></em></div></div>
 <div id="photo" class="photo hidden">
   <div class="ph-bar">
     <label class="ph-ctl"><span>FOV</span><input id="phFov" type="range" min="15" max="100" step="1" value="50"><b id="phFovV"></b></label>
@@ -62,12 +66,15 @@
     <label class="ph-ctl"><span>Blur</span><input id="phBlur" type="range" min="0" max="100" step="1" value="0"><b id="phBlurV"></b></label>
     <label class="ph-ctl"><span>Exposure</span><input id="phExp" type="range" min="-20" max="20" step="1" value="0"><b id="phExpV"></b></label>
     <label class="ph-ctl"><span>Tilt</span><input id="phRoll" type="range" min="-30" max="30" step="1" value="0"><b id="phRollV"></b></label>
-    <div class="seg ph-look" id="phLook"><button data-v="natural" class="on">Natural</button><button data-v="film">Film</button><button data-v="noir">Noir</button></div>
+    <div class="seg ph-look" id="phLook"><span class="seg-ink"></span><button data-v="natural" class="on">Natural</button><button data-v="film">Film</button><button data-v="noir">Noir</button></div>
+    <div class="seg ph-aspect" id="phAspect"><span class="seg-ink"></span><button data-v="free" class="on">Free</button><button data-v="16:9">16:9</button><button data-v="4:5">4:5</button><button data-v="1:1">1:1</button><button data-v="9:16">9:16</button></div>
+    <button id="phGrid" class="ph-chip" aria-pressed="false">Grid</button>
     <div class="ph-btns"><button id="phSave" class="btn primary">Save photo</button><button id="phExit" class="btn ghost">Done</button></div>
   </div>
   <div id="phTip" class="ph-tip"></div>
 </div>
 <div id="phFlash" class="ph-flash"></div>
+<div id="clip" class="clip hidden"><video id="clipVideo" muted loop playsinline></video><div class="clip-side"><div class="clip-t">Clip ready</div><div id="clipMeta" class="clip-m"></div><div class="clip-b"><button id="clipSave" class="btn primary">Save clip</button><button id="clipDrop" class="btn ghost">Discard</button></div></div></div>
 
 <div id="touch" class="touch hidden">
   <div id="stick" class="stick"><div id="knob" class="knob"></div></div>
@@ -78,13 +85,13 @@
     <div class="tb tb-gas" data-k="KeyW">Go</div>
   </div>
   <div class="tsmall">
-    <div class="ts" data-t="KeyF">F</div>
-    <div class="ts" data-t="KeyC">Cam</div>
-    <div class="ts ts-go" data-t="KeyL" id="tGo">Lineup</div>
-    <div class="ts" data-t="KeyO">Photo</div>
-    <div class="ts" data-t="KeyR">Reset</div>
-    <div class="ts" data-t="KeyP">Replay</div>
-    <div class="ts" data-t="Escape">Menu</div>
+    <div class="ts" data-t="KeyF" aria-label="Suction"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="1.6"/><path d="M12 10.4c-.6-2.6.2-4.6 2.6-5.2M13.4 12.8c2.4.9 3.6 2.6 3 5M10.6 12.8c-2 1.7-4.1 1.9-5.7.2"/></svg><span>Suction</span></div>
+    <div class="ts" data-t="KeyC" aria-label="Camera"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8.5 7l1.4-2.6h4.2L15.5 7"/></svg><span>Cam</span></div>
+    <div class="ts ts-go" data-t="KeyL" id="tGo" aria-label="Fly to the other site"><svg viewBox="0 0 24 24"><path d="M3.5 18c3.5-7.5 9-11 16.5-11"/><path d="M15.5 3.5L20.5 7l-3.6 4.8"/></svg><span>Lineup</span></div>
+    <div class="ts" data-t="KeyO" aria-label="Photo mode"><svg viewBox="0 0 24 24"><path d="M4 8.5V5.5A1.5 1.5 0 0 1 5.5 4h3M15.5 4h3A1.5 1.5 0 0 1 20 5.5v3M20 15.5v3a1.5 1.5 0 0 1-1.5 1.5h-3M8.5 20h-3A1.5 1.5 0 0 1 4 18.5v-3"/><circle cx="12" cy="12" r="3.2"/></svg><span>Photo</span></div>
+    <div class="ts" data-t="KeyR" aria-label="Reset"><svg viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5v4h4"/></svg><span>Reset</span></div>
+    <div class="ts" data-t="KeyP" aria-label="Replay"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3.5"/><path d="M10.2 9.2l4.6 2.8-4.6 2.8z"/></svg><span>Replay</span></div>
+    <div class="ts" data-t="Escape" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M4.5 7.5h15M4.5 12h15M4.5 16.5h15"/></svg><span>Menu</span></div>
   </div>
   <div id="tEnter" class="tenter" data-t="KeyE">Get in</div>
 </div>
@@ -136,13 +143,14 @@
       <div><div id="mcTitle" class="mc-title">Paused</div><div id="mcSub" class="mc-sub"></div></div>
       <button id="mcClose" class="mc-close" aria-label="Close">Esc</button>
     </div>
-    <div class="tabs" id="tabs"><i class="tab-ink" id="tabInk"></i><button data-tab="play" class="on">Game</button><button data-tab="boards">Leaderboards</button><button data-tab="keys">Controls</button></div>
+    <div class="tabs" id="tabs"><i class="tab-ink" id="tabInk"></i><button data-tab="play" class="on">Game</button><button data-tab="boards">Leaderboards</button><button data-tab="online">Online</button><button data-tab="keys">Controls</button></div>
     <div class="tab-body">
       <div class="tab" data-tab="play">
         <div class="sec">Driving</div>
         <div class="row"><div><div class="row-l">Flight assist</div><div class="row-d">Stops the spin when you let go, rolls the wheels down before touchdown and turns Jets into a soft landing. Off gives ×1.5 points.</div></div><button id="optAssist" class="tog on" aria-label="Flight assist"></button></div>
         <div class="row"><div class="row-l">Camera</div><div class="seg" id="optCam"><i class="seg-ink"></i><button data-v="chase">Chase</button><button data-v="level">Horizon</button><button data-v="fpp">Cockpit</button></div></div>
         <div class="row"><div class="row-l">Film stunts list</div><button id="optGoals" class="tog on" aria-label="Film stunts list"></button></div>
+        <div class="row"><div><div class="row-l">Camera shake</div><div class="row-d">A kick on hard landings, crashes and boost.</div></div><button id="optShake" class="tog on" aria-label="Camera shake"></button></div>
         <div class="row"><div><div class="row-l">Multiplayer</div><div class="row-d">Share the arena with everyone playing right now. Cars really collide.</div></div><button id="optMp" class="tog on" aria-label="Multiplayer"></button></div>
         <div class="sec">Display</div>
         <div class="row"><div><div class="row-l">Graphics</div><div class="row-d" id="qNote">Auto picks the best look this device can run smoothly.</div></div><div class="seg" id="optQ"><i class="seg-ink"></i><button data-v="auto">Auto</button><button data-v="high">High</button><button data-v="low">Low</button></div></div>
@@ -153,6 +161,10 @@
         <div class="row row-mouse"><div class="row-l">Mouse sensitivity</div><div class="rng"><input id="optSens" type="range" min="0.3" max="2.5" step="0.05"><span id="optSensV" class="rng-v"></span></div></div>
         <div class="sec">Profile</div>
         <div class="row"><div><div class="row-l">Name</div><div class="row-d">Shown on the online leaderboards.</div></div><input id="optName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name"></div>
+      </div>
+      <div class="tab hidden" data-tab="online">
+        <div id="plHead" class="pl-head"></div>
+        <div id="plList" class="pl-list"></div>
       </div>
       <div class="tab hidden" data-tab="boards">
         <div class="seg wide" id="boardSel"><i class="seg-ink"></i></div>
@@ -182,6 +194,7 @@
           <div><b>E</b><span>Get in or out</span></div>
           <div><b>C</b><span>Camera: chase, horizon, cockpit</span></div>
           <div><b>P</b><span>Replay the last jump (C: TV or free fly with WASD, Q/E and the mouse, Space pause, ← → scrub)</span></div>
+          <div><b>K</b><span>In a replay: record the TV cut as a 16:9 or 9:16 video clip with sound</span></div>
           <div><b>R · T · M · G</b><span>Reset, flight assist, music, stunts list</span></div>
         </div>
         <div class="keys-mob mob">Left stick steers. In the air it flips and rolls. Go and Brake drive, Boost fires the rear jets, hold Jets on the ground to ollie and in the air to brake the fall. F turns suction on. Lineup flies to the Teslas and back. Drag anywhere else to look around.</div>

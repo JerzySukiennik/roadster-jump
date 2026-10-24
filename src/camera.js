@@ -21,7 +21,7 @@ export class CameraRig {
     this.orbitYaw = 0; this.orbitPitch = 0; this.idle = 9; this.init = false; this.fov = tuning.camera.fov;
     this.footYaw = 0; this.footPitch = 0.25; this.footDist = 3.4; this.lookYaw = 0; this.lookPitch = 0;
     this.right = new THREE.Vector3(1, 0, 0);
-    this.sens = 1; this.scale = 1;
+    this.sens = 1; this.scale = 1; this.shakeA = 0; this.shakeT = 0; this.kick = 0;
     this._a = new THREE.Vector3(); this._b = new THREE.Vector3(); this._c = new THREE.Vector3(); this._d = new THREE.Vector3(); this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion();
   }
 
@@ -79,7 +79,7 @@ export class CameraRig {
     if (pos.y < 0.25 && p.y < 3) pos.y = 0.25;
     this.init = true;
     const fw = Math.min(1, sp / 0.44704 / C.fov_full_at_mph);
-    this.setFov(C.fov + (C.fov_max - C.fov) * fw * fw, dt);
+    this.setFov(C.fov + (C.fov_max - C.fov) * fw * fw + this.kick, dt); this.kick *= Math.exp(-dt * 2.5);
     this.basis(pos, target, this.mode === 'level' ? Y : this.up);
   }
 
@@ -102,6 +102,16 @@ export class CameraRig {
     this.setFov(60, dt);
     this.basis(pos, target, Y);
     this.init = true;
+  }
+
+  shake(a) { this.shakeA = Math.min(1, Math.max(this.shakeA, a)); }
+
+  applyShake(dt) {
+    if (this.shakeA < 0.002) return;
+    this.shakeT += dt; const a = this.shakeA, t = this.shakeT, n = (f, p) => Math.sin(t * f + p) * 0.6 + Math.sin(t * f * 2.31 + p * 1.7) * 0.4;
+    this.cam.rotateX(n(31, 0.3) * a * 0.03); this.cam.rotateY(n(27, 1.9) * a * 0.026); this.cam.rotateZ(n(23, 4.1) * a * 0.022);
+    this.cam.position.y += n(37, 2.7) * a * 0.045;
+    this.shakeA *= Math.exp(-dt * 5.5);
   }
 
   setFov(f, dt) { this.fov += (f - this.fov) * damp(4, dt); if (Math.abs(this.cam.fov - this.fov) > 0.01) { this.cam.fov = this.fov; this.cam.updateProjectionMatrix(); } }

@@ -1,4 +1,4 @@
-// Roadster Jump arena (from Film14): night tarmac, the white C-curl ramp with addressable red edge LEDs, a steel gantry with a moving-head rig, LED bar, red grandstand, floodlight towers, a parked semi, painted X lines and an event-driven light show; the loose pieces (rig cases, floor moving heads, barrier segments, poles, work lights, the semi) are grouped and listed in A.props so physics can knock them over.
+// Roadster Jump arena (from Film14): a night sky with twinkling stars, a faint Milky Way and a moon, night tarmac, the white C-curl ramp with addressable red edge LEDs, a steel gantry with a moving-head rig, LED bar, red grandstand, floodlight towers, a parked semi, painted X lines and an event-driven light show; the loose pieces (rig cases, floor moving heads, barrier segments, poles, work lights, the semi) are grouped and listed in A.props so physics can knock them over.
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {RAMP, rampAt} from './ramp.js';
@@ -50,9 +50,26 @@ export function buildArena(scene, Q = {}) {
   const R = RAMP, W2 = R.W / 2, TH = R.TH;
   scene.background = new THREE.Color(0x010102);
   scene.fog = new THREE.FogExp2(0x040509, 0.0042);
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.ShaderMaterial({side: THREE.BackSide, depthWrite: false, fog: false,
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 48, 24), new THREE.ShaderMaterial({side: THREE.BackSide, depthWrite: false, fog: false, uniforms: {uT: {value: 0}, uMoon: {value: V(-0.52, 0.3, 0.8).normalize()}},
     vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader: 'varying vec3 vP; void main(){ vec3 d = normalize(vP); float y = max(d.y, 0.0); vec3 c = mix(vec3(0.012, 0.014, 0.02), vec3(0.0015, 0.0015, 0.003), pow(y, 0.3)); gl_FragColor = vec4(c, 1.0); }'}));
+    fragmentShader: `uniform float uT; uniform vec3 uMoon; varying vec3 vP;
+float h3(vec3 p){ p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
+float stars(vec3 d, float sc, float th, float rad){ vec3 g = d * sc, id = floor(g), f = fract(g) - 0.5; float h = h3(id); if (h < th) return 0.0;
+  vec3 j = (vec3(h3(id + 1.3), h3(id + 2.7), h3(id + 4.1)) - 0.5) * 0.6; float r = length(f - j); return smoothstep(rad, 0.0, r) * (h - th) / (1.0 - th) * (0.7 + 0.3 * sin(uT * (1.5 + h * 6.0) + h * 60.0)); }
+void main(){ vec3 d = normalize(vP); float y = max(d.y, 0.0);
+  vec3 c = mix(vec3(0.012, 0.014, 0.02), vec3(0.0015, 0.0015, 0.003), pow(y, 0.3));
+  float up = smoothstep(0.02, 0.18, d.y), band = exp(-pow(dot(d, normalize(vec3(0.35, 0.42, -0.84))), 2.0) * 22.0);
+  float mw = band * (0.55 + 0.45 * sin(d.x * 9.0 + sin(d.z * 7.0) * 2.0) * sin(d.y * 13.0 + d.z * 5.0));
+  c += vec3(0.016, 0.018, 0.032) * mw * up;
+  float s1 = stars(d, 150.0, 0.982, 0.34), s2 = stars(d, 330.0, 0.95 - band * 0.12, 0.3) * (0.35 + band);
+  c += (vec3(0.85, 0.9, 1.0) * s1 * 3.2 + vec3(0.8, 0.85, 1.0) * s2 * 0.9) * up;
+  float md = dot(d, uMoon), disc = smoothstep(0.99978, 0.99986, md), rr = clamp((1.0 - md) / 0.00022, 0.0, 1.0);
+  vec3 mu = normalize(cross(uMoon, vec3(0.0, 1.0, 0.0))), mv = cross(mu, uMoon); vec2 q = vec2(dot(d, mu), dot(d, mv)) / 0.0205;
+  float cr = 1.0 - 0.26 * smoothstep(0.34, 0.16, length(q - vec2(-0.28, 0.3))) - 0.22 * smoothstep(0.27, 0.1, length(q - vec2(0.16, 0.24))) - 0.2 * smoothstep(0.24, 0.08, length(q - vec2(0.36, -0.12)))
+    - 0.18 * smoothstep(0.22, 0.06, length(q - vec2(-0.08, -0.3))) - 0.15 * smoothstep(0.17, 0.05, length(q - vec2(-0.5, -0.02))) + 0.14 * smoothstep(0.07, 0.0, length(q - vec2(-0.12, -0.68)));
+  c = mix(c, vec3(1.3, 1.26, 1.18) * cr * (1.0 - 0.38 * rr * rr), disc);
+  c += vec3(0.5, 0.55, 0.65) * (pow(max(md, 0.0), 2500.0) * 0.25 + pow(max(md, 0.0), 60.0) * 0.01);
+  gl_FragColor = vec4(c, 1.0); }`}));
   sky.renderOrder = -10; scene.add(sky); A.sky = sky;
 
   const asph = canvasTex(1024, 1024, (g, w, h) => { noiseFill(g, w, h, [54, 55, 58], 20, 3, 1);
@@ -329,6 +346,7 @@ void main(){ float xn = vR.x, row = vR.y, v = vR.z;
   A.update = (te, camPos, evIn) => {
     const ev = Object.assign({}, EV0, evIn || {}), {RUN1, TOP1, HOLD1, DOWN1, RUN2, LIP, LAND} = ev, carS = ev.carS ?? null;
     if (camPos) sky.position.copy(camPos);
+    sky.material.uniforms.uT.value = te;
     const run1 = false, run2 = te >= RUN2 - 0.2 && te < LAND + 1.5, hang = 0;
     const up = te < HOLD1 || te >= RUN2 - 0.1 ? 1 : -1, carY = carS === null ? -10 : rampAt(carS).y;
     const flashLip = pulse(te, LIP, 2.4), flashLand = pulse(te, LAND, 2.8), flashRun2 = pulse(te, RUN2, 3.5);

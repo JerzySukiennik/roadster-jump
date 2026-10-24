@@ -1,7 +1,7 @@
 // Roadster Jump tricks: tracks ceiling hang time on the ramp, takeoff, air time, body-axis rotation (kickflips and heelflips on roll, front and back flips on pitch, spins on yaw, with how much of it came after the apex), gullwing doors opened in flight, which Teslas of the lineup the car cleared, distance and touchdown, then names the jump (doubles and triples, late flips, bigspins and varials, gullwing), scores it (rotation, air, distance, ceiling, lineup, style, landing quality, assist-off bonus, combo), reports crashes, and scores manuals (rolling on the front or rear pair only) and the combo chain between tricks.
 import { LINEUP } from './lineup.js';
 const DEG = 180 / Math.PI;
-const COMBO_GAP = 3.5;
+export const COMBO_GAP = 3.5;
 
 export class Tricks {
   constructor(onEvent) {

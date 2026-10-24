@@ -18,6 +18,12 @@ export class GameAudio {
 
   now() { return this.vt ?? this.ctx.currentTime; }
 
+  tap() {
+    if (!this.ctx || typeof this.ctx.createMediaStreamDestination !== 'function') return null;
+    if (!this.dest) { this.dest = this.ctx.createMediaStreamDestination(); this.out.connect(this.dest); }
+    return this.dest.stream;
+  }
+
   async unlock(mobile, offline) {
     if (this.ctx) { if (this.ctx.state !== 'running' && !offline) this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;

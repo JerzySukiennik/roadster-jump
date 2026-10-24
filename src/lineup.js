@@ -222,17 +222,84 @@ function wheelParts(s, add, place) {
 }
 
 function wheelGeos(s) {
-  const tire = new THREE.CylinderGeometry(s.R, s.R, 1, 30, 1).rotateZ(PI / 2); tire.deleteAttribute('uv');
-  const rimR = s.R * (s.id === 'semi' ? 0.62 : 0.74), col = s.rim % 3, row = Math.floor(s.rim / 3), disc = new THREE.CircleGeometry(rimR, 30), uv = disc.getAttribute('uv');
-  for (let k = 0; k < uv.count; k++) uv.setXY(k, (col + uv.getX(k)) / 3, (1 - row) * 0.5 + uv.getY(k) * 0.5);
-  return { tire, rim: disc };
+  const R = s.R, rimR = R * (s.id === 'semi' ? 0.62 : 0.74), k = R / 0.36;
+  const prof = [[0.001, -0.15], [rimR * 0.97, -0.15], [rimR * 0.97, -0.4], [rimR, -0.43], [R * 0.9, -0.5], [R * 0.975, -0.47], [R, -0.37], [R, 0.37], [R * 0.975, 0.47], [R * 0.9, 0.5], [rimR, 0.43], [rimR * 0.97, 0.4], [rimR * 0.97, 0.15], [0.001, 0.15]];
+  const tire = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 32).rotateZ(PI / 2); tire.deleteAttribute('uv');
+  const col = s.rim % 3, row = Math.floor(s.rim / 3), rings = [[0, -0.045], [0.25, -0.04], [0.34, -0.022], [0.9, -0.006], [0.97, 0], [1, -0.014]], seg = 32, pos = [], uv = [], idx = [];
+  pos.push(0, 0, rings[0][1] * k); uv.push((col + 0.5) / 3, (1 - row) * 0.5 + 0.25);
+  for (let r = 1; r < rings.length; r++) for (let i = 0; i < seg; i++) { const a = i / seg * 2 * PI, x = Math.cos(a) * rings[r][0], y = Math.sin(a) * rings[r][0]; pos.push(x * rimR, y * rimR, rings[r][1] * k); uv.push((col + 0.5 + x * 0.5) / 3, (1 - row) * 0.5 + (0.5 + y * 0.5) * 0.5); }
+  for (let i = 0; i < seg; i++) idx.push(0, 1 + i, 1 + (i + 1) % seg);
+  for (let r = 1; r < rings.length - 1; r++) for (let i = 0; i < seg; i++) { const a = 1 + (r - 1) * seg + i, b = 1 + (r - 1) * seg + (i + 1) % seg, c = a + seg, d = b + seg; idx.push(a, c, d, a, d, b); }
+  const rim = new THREE.BufferGeometry(); rim.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); rim.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); rim.setIndex(idx); rim.computeVertexNormals();
+  return { tire, rim };
+}
+
+function stAt(S, z) {
+  let i = 0; while (i < S.length - 2 && S[i + 1].z < z) i++;
+  const a = S[i], b = S[i + 1], t = clamp01((z - a.z) / Math.max(1e-6, b.z - a.z)), o = { z };
+  for (const f of ['yb', 'ybelt', 'yt', 'w', 'wt']) o[f] = lerp(a[f], b[f], t);
+  return o;
+}
+
+function sidePt(S, box, z, y, side) {
+  const st = stAt(S, z), r = halfRing(st, box);
+  for (let i = 0; i < r.length - 1; i++) { const a = r[i], b = r[i + 1]; if ((y - a[1]) * (y - b[1]) <= 0 && a[1] !== b[1] && a[0] > 0.05) { const t = (y - a[1]) / (b[1] - a[1]), nx = b[1] - a[1], ny = a[0] - b[0], l = Math.hypot(nx, ny) || 1; return { p: new THREE.Vector3(side * lerp(a[0], b[0], t), y, z), n: new THREE.Vector3(side * nx / l, ny / l, 0) }; } }
+  return null;
+}
+
+function topPt(S, box, z, x) {
+  const st = stAt(S, z), r = halfRing(st, box), ax = Math.abs(x);
+  for (let i = 5; i < r.length - 1; i++) { const a = r[i], b = r[i + 1]; if (ax <= a[0] && ax >= b[0] && a[0] !== b[0]) { const t = (a[0] - ax) / (a[0] - b[0]), nx = b[1] - a[1], ny = a[0] - b[0], l = Math.hypot(nx, ny) || 1; return { p: new THREE.Vector3(x, lerp(a[1], b[1], t), z), n: new THREE.Vector3(Math.sign(x || 1) * nx / l, ny / l, 0) }; } }
+  return null;
+}
+
+function seamLine(P, w = 0.011) {
+  const pts = P.filter(Boolean); if (pts.length < 2) return null;
+  const pos = [], idx = [], t = new THREE.Vector3(), b = new THREE.Vector3();
+  pts.forEach(({ p, n }, i) => {
+    t.subVectors(pts[Math.min(pts.length - 1, i + 1)].p, pts[Math.max(0, i - 1)].p).normalize(); b.crossVectors(n, t).normalize().multiplyScalar(w / 2);
+    const q = p.clone().addScaledVector(n, 0.004); pos.push(q.x - b.x, q.y - b.y, q.z - b.z, q.x + b.x, q.y + b.y, q.z + b.z);
+    if (i) { const k = i * 2; idx.push(k - 2, k, k - 1, k - 1, k, k + 1); }
+  });
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g.toNonIndexed();
+}
+
+const SEAMS = {
+  m3: { cuts: [0.98, -0.12, -1.0], handles: [0.2, -0.82], hood: [0.56, 1.14, 2.06], trunk: [0.6, -1.62, -2.2] },
+  my: { cuts: [0.93, -0.2, -1.1], handles: [0.12, -0.95], hood: [0.6, 1.2, 2.1] },
+  cab: { cuts: [0.82, -0.78], hood: [0.58, 1.55, 1.98] },
+};
+
+function addSeams(s, S, add, place) {
+  const D = SEAMS[s.id]; if (!D) return;
+  const box = !!s.box, archTop = (z) => { let y = 0; for (const a of s.axles) { const d = z - a, ra = s.R + 0.09; if (Math.abs(d) < ra) y = Math.max(y, s.R + Math.sqrt(ra * ra - d * d)); } return y; };
+  const line = (P) => { const g = seamLine(P); if (g) add('seam', place(g)); };
+  for (const side of [1, -1]) {
+    let lo = Infinity, hi = -Infinity;
+    for (const z of D.cuts) {
+      const st = stAt(S, z), y0 = Math.max(st.yb + 0.16 * (st.ybelt - st.yb), archTop(z) + 0.02), y1 = st.ybelt - 0.012, P = [];
+      for (let k = 0; k <= 10; k++) P.push(sidePt(S, box, z, lerp(y0, y1, k / 10), side));
+      line(P); lo = Math.min(lo, z); hi = Math.max(hi, z);
+    }
+    { const P = []; for (let k = 0; k <= 16; k++) { const z = lerp(lo, hi, k / 16), st = stAt(S, z); P.push(sidePt(S, box, z, st.yb + 0.16 * (st.ybelt - st.yb), side)); } line(P); }
+    for (const z of D.handles || []) { const st = stAt(S, z), q = sidePt(S, box, z, st.ybelt - 0.075, side); if (q) add('trim', place(new THREE.BoxGeometry(0.012, 0.026, 0.15).translate(q.p.x + side * 0.002, q.p.y, z))); }
+  }
+  if (D.hood) {
+    const [x, z0, z1] = D.hood;
+    for (const sx of [x, -x]) { const P = []; for (let k = 0; k <= 12; k++) P.push(topPt(S, box, lerp(z0, z1, k / 12), sx)); line(P); }
+    { const P = []; for (let k = 0; k <= 12; k++) P.push(topPt(S, box, z1, lerp(-x, x, k / 12))); line(P); }
+  }
+  if (D.trunk) {
+    const [x, z0, z1] = D.trunk;
+    for (const sx of [x, -x]) { const P = []; for (let k = 0; k <= 8; k++) P.push(topPt(S, box, lerp(z0, z1, k / 8), sx)); line(P); }
+  }
 }
 
 const _wm = new THREE.Matrix4(), _wr = new THREE.Matrix4(), _wq = new THREE.Quaternion(), _we = new THREE.Euler(0, 0, 0, 'YXZ'), _wp = new THREE.Vector3(), _ws = new THREE.Vector3();
 export class VehicleView {
   constructor(kit, parent, M) {
     this.kit = kit; this.root = new THREE.Group(); parent.add(this.root);
-    for (const [key, { mat, geo }] of kit.body) { const m = new THREE.Mesh(geo, mat), lit = !mat.isMeshBasicMaterial; m.castShadow = lit; m.receiveShadow = lit; m.name = kit.id + '_' + key; this.root.add(m); }
+    for (const [key, { mat, geo }] of kit.body) { const m = new THREE.Mesh(geo, mat), lit = !mat.isMeshBasicMaterial && !mat.isShaderMaterial; m.castShadow = lit; m.receiveShadow = lit; m.name = kit.id + '_' + key; this.root.add(m); }
     const n = kit.wheels.length;
     this.tires = new THREE.InstancedMesh(kit.wheel.tire, M.tire, n); this.rims = new THREE.InstancedMesh(kit.wheel.rim, M.rim, n);
     this.tires.castShadow = true; this.tires.frustumCulled = false; this.rims.frustumCulled = false; this.root.add(this.tires, this.rims);
@@ -245,7 +312,7 @@ export class VehicleView {
       const k = w.phys, a = k < 2 ? steer[k] : 0, yc = y0[k] - len[k];
       _wq.setFromEuler(_we.set(spin[k], a, 0, 'YXZ'));
       _wm.compose(_wp.set(w.x, yc, w.z), _wq, _ws.set(w.tw, 1, 1)); this.tires.setMatrixAt(i, _wm);
-      _wm.compose(_wp.set(w.x, yc, w.z), _wq, _ws.set(1, 1, 1)); _wr.makeRotationY(w.side * PI / 2).setPosition(w.side * (w.tw / 2 + 0.003), 0, 0); _wm.multiply(_wr); this.rims.setMatrixAt(i, _wm);
+      _wm.compose(_wp.set(w.x, yc, w.z), _wq, _ws.set(1, 1, 1)); _wr.makeRotationY(w.side * PI / 2).setPosition(w.side * (w.tw * 0.43 + 0.004), 0, 0); _wm.multiply(_wr); this.rims.setMatrixAt(i, _wm);
     });
     this.tires.instanceMatrix.needsUpdate = true; this.rims.instanceMatrix.needsUpdate = true;
     const upY = 1 - 2 * (q[0] * q[0] + q[2] * q[2]);
@@ -288,6 +355,22 @@ function buildLoftCar(s, add, place, step) {
     }
     for (let k = 0; k < 5; k++) add('amber', place(new THREE.BoxGeometry(0.12, 0.05, 0.05).translate((k - 2) * 0.2, 3.47, 1.86)));
   }
+  if (s.id === 'semi') {
+    const L = (P) => { const g = seamLine(P); if (g) add('seam', place(g)); };
+    for (const side of [1, -1]) {
+      const at = (z, y) => sidePt(S, true, z, y, side), Z0 = 1.38, Z1 = 2.76, Y0 = 0.98, Y1 = 3.22, P = [];
+      for (let k = 0; k <= 8; k++) P.push(at(Z0, lerp(Y0, Y1, k / 8)));
+      for (let k = 1; k <= 8; k++) P.push(at(lerp(Z0, Z1, k / 8), Y1));
+      L(P);
+      { const Q = []; for (let k = 0; k <= 8; k++) Q.push(at(Z1, lerp(Y1, Y0, k / 8))); L(Q); }
+      { const Q = []; for (let k = 0; k <= 8; k++) Q.push(at(lerp(Z0, Z1, k / 8), Y0)); L(Q); }
+      { const Q = []; for (let k = 0; k <= 12; k++) Q.push(at(lerp(-1.2, Z0 - 0.08, k / 12), 1.05)); L(Q); }
+      { const Q = []; for (let k = 0; k <= 10; k++) Q.push(at(Z0 - 0.08, lerp(1.05, 3.48, k / 10))); L(Q); }
+      for (const [y, d] of [[0.64, 0.05], [0.84, 0.035]]) add('trim', place(new THREE.BoxGeometry(d * 2, 0.04, 0.82).translate(side * (1.27 + d), y, 2.08)));
+      add('trim', place(new THREE.BoxGeometry(0.02, 0.04, 0.22).translate(side * 1.302, 1.9, 2.55)));
+    }
+  }
+  addSeams(s, S, add, place);
   wheelParts(s, add, place);
   return S;
 }
@@ -313,6 +396,11 @@ function buildCybertruck(s, add, place) {
   add('white', place(new THREE.BoxGeometry(1.86, 0.035, 0.03).translate(0, 0.99, 2.856)));
   add('red', place(new THREE.BoxGeometry(1.7, 0.04, 0.03).translate(0, 1.06, -2.856)));
   add('trim', place(new THREE.BoxGeometry(1.96, 0.36, 0.16).translate(0, 0.6, 2.86)));
+  { const sg = (P) => { const g = seamLine(P.map((p) => ({ p: new THREE.Vector3(...p), n: new THREE.Vector3(p[3], p[4], 0) }))); if (g) add('seam', place(g)); };
+    for (const sd of [1, -1]) for (const [z, y0] of [[1.02, 0.5], [-0.12, 0.5], [-1.22, 0.56]]) { const P = []; for (let k = 0; k <= 4; k++) P.push([sd * W0, lerp(y0, BELT - 0.02, k / 4), z, sd, 0]); sg(P); }
+    for (const sd of [1, -1]) { const P = []; for (let k = 0; k <= 10; k++) { const z = lerp(1.3, 2.62, k / 10); P.push([sd * 0.86, topY(z), z, 0, 1]); } sg(P); }
+    { const P = []; for (let k = 0; k <= 10; k++) P.push([lerp(-0.86, 0.86, k / 10), topY(2.62), 2.62, 0, 1]); sg(P); }
+    for (const sd of [1, -1]) { const P = []; for (let k = 0; k <= 8; k++) { const z = lerp(-1.52, -2.8, k / 8); P.push([sd * 0.86, topY(z), z, 0, 1]); } sg(P); } }
   for (const sd of [1, -1]) {
     add('trim', place(new THREE.BoxGeometry(0.07, 0.14, 3.2).translate(sd * (W0 + 0.01), 0.47, 0)));
     for (const z of [1.9, -1.9]) {
@@ -329,7 +417,10 @@ export function buildLineup(scene, Q) {
   const paints = new Map();
   const M = {
     glass: new THREE.MeshStandardMaterial({ color: 0x262c35, roughness: 0.1, metalness: 0.85, envMapIntensity: 1.2 }),
-    tire: new THREE.MeshStandardMaterial({ color: 0x0c0c0d, roughness: 0.86, metalness: 0 }),
+    tire: new THREE.MeshStandardMaterial({ color: 0x101012, roughness: 0.82, metalness: 0 }),
+    seam: new THREE.ShaderMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,
+      vertexShader: 'varying float vD; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'varying float vD; void main(){ gl_FragColor = vec4(0.0, 0.0, 0.0, 0.8 * smoothstep(17.0, 6.0, vD)); }' }),
     trim: new THREE.MeshStandardMaterial({ color: 0x0c0d0f, roughness: 0.5, metalness: 0.3, envMapIntensity: 0.6 }),
     arch: new THREE.MeshBasicMaterial({ color: 0x020202 }),
     rim: new THREE.MeshStandardMaterial({ map: rimAtlas(), roughness: 0.32, metalness: 0.75, envMapIntensity: 0.95 }),

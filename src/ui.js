@@ -16,11 +16,13 @@ const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 export class UI {
   constructor(settings, online) {
     this.S = settings; this.online = online;
-    this.el = { mph: $('mph'), gear: $('gear'), spool: $('spool'), dots: $('dots'), fan: $('chipFan'), assist: $('chipAssist'), cam: $('camName'), go: $('goName'), place: $('place'), placeN: $('placeName'), placeS: $('placeSub'), trick: $('trick'), tBig: $('trickBig'), tSub: $('trickSub'), tMeta: $('trickMeta'),
+    this.el = { combo: $('combo'), comboN: $('comboN'), comboL: $('comboL'), comboBar: $('comboBar'), mph: $('mph'), prnd: [...$('prnd').children], pwrR: $('pwrRegen'), pwrD: $('pwrDrive'), att: $('att'), attCar: $('attCar'), attH: $('attH'), goals: $('goals'), spool: $('spool'), dots: $('dots'), fan: $('chipFan'), assist: $('chipAssist'), cam: $('camName'), go: $('goName'), place: $('place'), placeN: $('placeName'), placeS: $('placeSub'), trick: $('trick'), tBig: $('trickBig'), tSub: $('trickSub'), tMeta: $('trickMeta'),
       result: $('result'), rNames: $('resNames'), rQ: $('resQuality'), rPts: $('resPts'), rParts: $('resParts'), rRank: $('resRank'), best: $('best'), session: $('session'), online: $('online'), prompt: $('prompt'), toast: $('toast'),
       replay: $('replay'), rpFill: $('rpFill'), rpMode: $('rpMode'), rpHelp: $('rpHelp'), fps: $('fps'), tip: $('tip'), tipT: $('tipT'), tipD: $('tipD') };
-    for (let i = 0; i < 10; i++) { const d = document.createElement('i'); if (i === 4 || i === 6) d.className = 'g'; this.el.dots.appendChild(d); }
-    this.dots = [...this.el.dots.children];
+    const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 72 34');
+    svg.innerHTML = '<path class="noz-car" d="M10 4.5 H48 Q63 5.5 68 12.5 V21.5 Q63 28.5 48 29.5 H10 Q4 29.5 4 23.5 V10.5 Q4 4.5 10 4.5 Z"/><path class="noz-glass" d="M24 9 H44 Q51 12 51 17 Q51 22 44 25 H24 Q20 22 20 17 Q20 12 24 9 Z"/>';
+    for (const [x, y] of [[7.4,12.0],[7.4,15.3],[7.4,18.7],[7.4,22.0],[65.3,11.4],[65.3,22.6],[48.5,5.8],[22.9,5.8],[48.5,28.2],[22.9,28.2]]) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('cx', x); c.setAttribute('cy', y); c.setAttribute('r', 2.3); svg.appendChild(c); }
+    this.el.dots.appendChild(svg); this.dots = [...svg.querySelectorAll('circle')]; this.goalIdle = 9;
     this.last = {}; this.toastT = 0; this.resultT = 0; this.board = 'score'; this.mphShown = 0; this.lastHalf = 0;
     this.track = $('ldTrack'); this.trackLen = this.track.getTotalLength(); this.fill = $('ldFill'); this.dot = $('ldDot');
     this.fill.style.strokeDasharray = `${this.trackLen}`; this.fill.style.strokeDashoffset = `${this.trackLen}`;
@@ -28,6 +30,7 @@ export class UI {
     const tick = () => { if (this.ldDone) return; this.ldp += (this.ldTarget - this.ldp) * 0.12; this.drawLoad(this.ldp); requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
     this.bindMenu(); this.bindKeys();
+    addEventListener('resize', () => { if (this.menuOpen) requestAnimationFrame(() => { for (const id of ['tabs', 'optCam', 'optQ', 'boardSel']) { const el = $(id); if (el) this.segInk(el); } }); });
   }
 
   drawLoad(p) {
@@ -105,7 +108,10 @@ export class UI {
     const E = this.el;
     this.mphShown += (h.mph - this.mphShown) * Math.min(1, h.dt * 14);
     this.set('mph', Math.round(this.mphShown), (v) => { E.mph.textContent = v; });
-    this.set('gear', h.gear, (v) => { E.gear.textContent = v; E.gear.classList.toggle('rev', v === 'R'); });
+    this.set('gear', h.gear, (v) => { for (const g of E.prnd) g.classList.toggle('on', g.dataset.g === v); });
+    const pw = h.power || 0; this.set('pwr', Math.round(pw * 60), () => { E.pwrD.style.transform = `scaleX(${Math.max(0, pw).toFixed(3)})`; E.pwrR.style.transform = `scaleX(${Math.max(0, -pw).toFixed(3)})`; });
+    const busy = h.mph > 18 || !!(h.live && h.live.air > 0.2) || h.hang > 0.2; this.goalIdle = busy ? 0 : this.goalIdle + h.dt;
+    this.set('gmini', this.goalIdle < 1.4, (v) => E.goals.classList.toggle('mini', v));
     this.set('spool', Math.round(h.spool * 100), (v) => { E.spool.style.width = `${v}%`; });
     this.set('fan', h.fan, (v) => { E.fan.classList.toggle('on', v); this.ping(E.fan); });
     this.set('assist', h.assist, (v) => { E.assist.classList.toggle('on', v); this.ping(E.assist); });
@@ -113,6 +119,18 @@ export class UI {
     this.set('go', h.go, (v) => { E.go.textContent = v; });
     if (this.placeT > 0) { this.placeT -= h.dt; if (this.placeT <= 0) E.place.classList.remove('on'); }
     for (let i = 0; i < 10; i++) { const on = h.valves[i] > 0.08; if (this.dots[i]._on !== on) { this.dots[i]._on = on; this.dots[i].classList.toggle('on', on); } }
+    const A = h.att;
+    this.set('attOn', !!A, (v) => E.trick.classList.toggle('air', v));
+    if (A) {
+      E.attCar.setAttribute('transform', `rotate(${A.roll.toFixed(1)})`); E.attH.setAttribute('transform', `translate(0 ${Math.max(-22, Math.min(22, A.pitch * 0.32)).toFixed(1)})`);
+      this.set('attLv', Math.abs(A.roll) < 25 && Math.abs(A.pitch) < 25, (v) => E.att.classList.toggle('level', v));
+    }
+    const C = h.combo;
+    this.set('comboOn', !!C, (v) => E.combo.classList.toggle('on', v));
+    if (C) {
+      this.set('comboN', C.n, () => { E.comboN.textContent = `×${C.mult.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}`; E.comboL.textContent = C.n > 1 ? `Combo ${C.n} · chain the next trick` : 'Combo · chain the next trick'; this.ping(E.combo, 'bump'); });
+      E.comboBar.style.transform = `scaleX(${C.left.toFixed(3)})`;
+    }
     const L = h.live;
     if (L && L.manual) {
       this.lastHalf = 0;
@@ -142,9 +160,11 @@ export class UI {
     if (this.toastT > 0) { this.toastT -= h.dt; if (this.toastT <= 0) E.toast.classList.remove('on'); }
     if (this.resultT > 0) { this.resultT -= h.dt; if (this.resultT <= 0) { E.result.classList.add('leave'); E.result.classList.remove('on'); } }
     this.set('replay', !!h.replay, (v) => E.replay.classList.toggle('on', v));
-    if (h.replay) { E.rpFill.style.width = `${(h.replay.p * 100).toFixed(1)}%`; this.set('rpMode', h.replay.mode, (v) => { E.rpMode.textContent = v === 'tv' ? 'TV' : 'Free'; E.rpHelp.textContent = v === 'tv' ? (h.touch ? 'Cam for free fly' : 'C free fly · P exit') : (h.touch ? 'Stick fly · Go/Brake up, down · drag to look' : 'WASD fly · Q/E down, up · Shift fast · wheel speed · Space pause · ← → scrub · P exit'); }); }
+    if (h.replay) { E.rpFill.style.width = `${(h.replay.p * 100).toFixed(1)}%`; this.set('rpMode', h.replay.mode, (v) => { E.rpMode.textContent = v === 'tv' ? 'TV' : 'Free'; E.rpHelp.textContent = v === 'tv' ? (h.touch ? 'Cam for free fly' : 'C free fly · K clip · P exit') : (h.touch ? 'Stick fly · Go/Brake up, down · drag to look' : 'WASD fly · Q/E down, up · Shift fast · wheel speed · Space pause · ← → scrub · P exit'); }); }
     if (h.fps) E.fps.textContent = h.fps;
   }
+
+  hideResult() { if (this.resultT > 0) this.resultT = 1e-4; }
 
   ping(el, cls = 'ping') { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 
@@ -176,7 +196,8 @@ export class UI {
 
   segInk(seg) {
     const ink = seg.querySelector('.seg-ink, .tab-ink'), on = seg.querySelector('button.on'); if (!ink || !on) return;
-    ink.style.width = `${on.offsetWidth}px`; ink.style.transform = `translateX(${on.offsetLeft}px)`;
+    if (getComputedStyle(seg).flexDirection === 'column') { ink.style.width = `${on.offsetWidth}px`; ink.style.height = `${on.offsetHeight}px`; ink.style.transform = `translate(${on.offsetLeft}px, ${on.offsetTop}px)`; return; }
+    ink.style.height = ''; ink.style.width = `${on.offsetWidth}px`; ink.style.transform = `translateX(${on.offsetLeft}px)`;
   }
 
   bindMenu() {
@@ -189,6 +210,7 @@ export class UI {
     this.syncAssist = tog('optAssist', 'assist', (v) => this.onAssist && this.onAssist(v));
     this.syncGoals = tog('optGoals', 'goals', (v) => this.onGoals && this.onGoals(v));
     this.syncMp = tog('optMp', 'mp', (v) => this.onMp && this.onMp(v));
+    this.syncShake = tog('optShake', 'shake');
     const rng = (id, key, fmt, cb) => { const el = $(id), v = $(id + 'V'); const upd = () => { const p = (S[key] - el.min) / (el.max - el.min) * 100; el.style.setProperty('--p', `${p}%`); v.textContent = fmt(S[key]); }; el.value = S[key]; upd(); el.oninput = () => { S[key] = +el.value; upd(); this.save(); cb && cb(); }; };
     const pct = (x) => `${Math.round(x * 100)}%`;
     rng('optMusic', 'musicVol', pct, () => this.onVolume && this.onVolume()); rng('optSfx', 'sfxVol', pct, () => this.onVolume && this.onVolume()); rng('optSens', 'sens', (x) => `${x.toFixed(2)}×`, () => this.onSens && this.onSens());
@@ -212,8 +234,35 @@ export class UI {
     addEventListener('keyup', (e) => { const c = map[e.code] || e.code, el = kb.querySelector(`[data-code="${c}"]`); if (el) el.classList.remove('down'); });
   }
 
+  feed(name, text, pts, quiet) {
+    const box = $('feed'); if (!box) return;
+    const d = document.createElement('div'); d.className = 'fd' + (quiet ? ' quiet' : '');
+    d.innerHTML = '<b></b><span></span><em></em>'; d.children[0].textContent = name; d.children[1].textContent = text; d.children[2].textContent = pts || '';
+    box.prepend(d); while (box.children.length > 4) box.lastChild.remove();
+    setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 450); }, quiet ? 3500 : 6500);
+  }
+
+  renderPlayers() {
+    const P = this.players ? this.players() : { on: false }, head = $('plHead'), list = $('plList');
+    if (!P.on) { head.textContent = ''; list.innerHTML = `<div class="msg">${P.mp ? 'Connecting to the shared arena' : 'Multiplayer is off. Turn it on in Game to share the arena.'}</div>`; return; }
+    head.innerHTML = '<span></span><span></span>'; head.children[0].textContent = `${P.list.length + 1} in room ${P.room ? P.room.replace(/^r/, '') : ''}`.trim(); head.children[1].textContent = `You: ${P.me} · ${P.site}`;
+    if (!P.list.length) { list.innerHTML = '<div class="msg">Just you right now. Anyone who opens the game joins this arena.</div>'; return; }
+    const keep = new Map([...list.querySelectorAll('.pl')].map((r) => [r.dataset.u, r]));
+    list.querySelectorAll('.msg').forEach((m) => m.remove());
+    P.list.forEach((p, i) => {
+      let r = keep.get(p.u);
+      if (!r) { r = document.createElement('div'); r.className = 'pl'; r.dataset.u = p.u; r.style.animationDelay = `${i * 0.04}s`; r.innerHTML = '<div class="pl-n"><b></b><span></span></div><span class="pl-d"></span><button class="pl-fly">Fly</button>'; r.querySelector('button').onclick = () => this.onFlyTo && this.onFlyTo(p.u); }
+      r.querySelector('b').textContent = p.name; r.querySelector('.pl-n span').textContent = `${p.site} · ${p.ride}`;
+      r.querySelector('.pl-d').textContent = p.d < 1000 ? `${Math.round(p.d)} m` : `${(p.d / 1000).toFixed(1)} km`;
+      list.appendChild(r); keep.delete(p.u);
+    });
+    for (const r of keep.values()) r.remove();
+  }
+
   tab(t) {
     this.curTab = t;
+    clearInterval(this.plTimer);
+    if (t === 'online') { this.renderPlayers(); this.plTimer = setInterval(() => { if (this.menuOpen && this.curTab === 'online') this.renderPlayers(); else clearInterval(this.plTimer); }, 1000); }
     for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === t);
     this.segInk($('tabs'));
     for (const d of document.querySelectorAll('.tab')) d.classList.toggle('hidden', d.dataset.tab !== t);
@@ -242,7 +291,7 @@ export class UI {
       $('mcTitle').textContent = opt.title || 'Paused'; $('mcSub').textContent = opt.sub || '';
       $('resume').textContent = opt.resume || 'Resume';
       for (const id of ['mReset', 'mReplay']) $(id).classList.toggle('hidden', !!opt.title);
-      this.syncCam(); this.syncAssist(); this.syncGoals(); this.syncMp(); $('optName').value = this.S.name || '';
+      this.syncCam(); this.syncAssist(); this.syncGoals(); this.syncMp(); this.syncShake(); $('optName').value = this.S.name || '';
       this.tab(opt.tab || 'play');
     } else if (this.menuOpen) {
       this.menuOpen = false; m.classList.add('closing'); setTimeout(() => { if (!this.menuOpen) m.classList.add('hidden'); }, 220);

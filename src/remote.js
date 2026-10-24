@@ -1,4 +1,4 @@
-// Roadster Jump remote players: everyone else in the shared arena, rebuilt from their packed state with 120 ms of interpolation and a short extrapolation: their Roadster (a light LOD1 copy without lamps, wheels that spin and steer, cold-gas vapour from the nozzles), the lineup Tesla they are driving, or Jurek on foot as a simple hand-built figure, each with a name tag. Cars carry hulls with their real mass (no gravity) that are steered onto the network pose every physics step, so a crash trades momentum with your car instead of bouncing off a wall, and teleports snap instead of sweeping across the arena.
+// Roadster Jump remote players: everyone else in the shared arena, rebuilt from their packed state with 120 ms of interpolation and a short extrapolation: their Roadster (a light LOD1 copy without lamps, wheels that spin and steer, cold-gas vapour from the nozzles), the lineup Tesla they are driving, or Jurek on foot as a simple hand-built figure, each with a name tag that pops the score of every trick they land (the packet carries the last landing for a few seconds). Cars carry hulls with their real mass (no gravity) that are steered onto the network pose every physics step, so a crash trades momentum with your car instead of bouncing off a wall, and teleports snap instead of sweeping across the arena.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
@@ -25,8 +25,8 @@ function unCar(s) {
 function unpack(s) {
   const parts = s.split('|');
   if (parts[0] !== 'v1') return null;
-  const vid = +parts[1], o = { vid, R: unCar(parts[2] || ''), A: null, W: null };
-  for (const x of parts.slice(3)) { if (x.startsWith('A:')) o.A = unCar(x.slice(2)); else if (x.startsWith('W:')) { const n = x.slice(2).split(',').map(Number); o.W = { p: [n[0], n[1], n[2]], yaw: n[3], speed: n[4], grounded: n[5] === 1 }; } }
+  const vid = +parts[1], o = { vid, R: unCar(parts[2] || ''), A: null, W: null, E: null };
+  for (const x of parts.slice(3)) { if (x.startsWith('E:')) { const a = x.slice(2).split(','); o.E = { seq: +a[0], pts: +a[1] || 0, text: a.slice(2).join(' ').slice(0, 48) }; } else if (x.startsWith('A:')) o.A = unCar(x.slice(2)); else if (x.startsWith('W:')) { const n = x.slice(2).split(',').map(Number); o.W = { p: [n[0], n[1], n[2]], yaw: n[3], speed: n[4], grounded: n[5] === 1 }; } }
   return o.R ? o : null;
 }
 
@@ -91,10 +91,15 @@ export class Remotes {
     let e = this.list.get(u);
     if (!e) {
       const c = this.tu.car;
-      e = { u, name, snaps: [], rb: this.body([this.hull.body, this.hull.cabin], c.mass, [c.inertia.pitch, c.inertia.yaw, c.inertia.roll]), ab: null, avid: 0, av: null, fig: null, tag: document.createElement('div') };
-      e.tag.className = 'mp-tag'; this.tags.appendChild(e.tag); this.list.set(u, e); this.loadTpl().then(() => this.roadster(e));
+      e = { u, name, snaps: [], rb: this.body([this.hull.body, this.hull.cabin], c.mass, [c.inertia.pitch, c.inertia.yaw, c.inertia.roll]), ab: null, avid: 0, av: null, fig: null, tag: document.createElement('div'), seq: null };
+      e.tag.className = 'mp-tag'; e.tag.innerHTML = '<b></b><i></i>'; this.tags.appendChild(e.tag); this.list.set(u, e); this.loadTpl().then(() => this.roadster(e));
     }
-    e.name = name; e.tag.textContent = name;
+    if (e.name !== name || !e.tag.firstChild.textContent) e.tag.firstChild.textContent = name;
+    e.name = name;
+    if (o.E && o.E.seq !== e.seq) {
+      e.seq = o.E.seq;
+      if (o.E.pts > 0) { const i = e.tag.lastChild; i.textContent = `+${o.E.pts.toLocaleString('en-US')}`; e.tag.classList.remove('pop'); void e.tag.offsetWidth; e.tag.classList.add('pop'); clearTimeout(e.popT); e.popT = setTimeout(() => e.tag.classList.remove('pop'), 2700); if (this.onTrick) this.onTrick(e, o.E); }
+    }
     o.t = t; e.snaps.push(o); if (e.snaps.length > 12) e.snaps.shift();
     if (o.vid !== e.avid) {
       if (e.ab) { this.world.removeRigidBody(e.ab); e.ab = null; }
@@ -122,6 +127,12 @@ export class Remotes {
     if ((cb.p[0] - ca.p[0]) ** 2 + (cb.p[2] - ca.p[2]) ** 2 > 64) return Object.assign(out, k < 0.5 ? ca : cb, { p: (k < 0.5 ? ca : cb).p.slice(), q: (k < 0.5 ? ca : cb).q.slice() });
     this._qa.set(...ca.q); this._qb.set(...cb.q); this._qa.slerp(this._qb, k);
     return Object.assign(out, cb, { p: [ca.p[0] + (cb.p[0] - ca.p[0]) * k, ca.p[1] + (cb.p[1] - ca.p[1]) * k, ca.p[2] + (cb.p[2] - ca.p[2]) * k], q: [this._qa.x, this._qa.y, this._qa.z, this._qa.w], steer: ca.steer + (cb.steer - ca.steer) * k });
+  }
+
+  where(e) {
+    const s = e.snaps[e.snaps.length - 1]; if (!s) return null;
+    if (s.W) return { p: s.W.p, v: [0, 0, 0], q: null, foot: true, vid: 0 };
+    const c = s.vid > 0 && s.A ? s.A : s.R; return c ? { p: c.p, v: c.v, q: c.q, foot: false, vid: s.vid } : null;
   }
 
   latestWalker(e) { for (let i = e.snaps.length - 1; i >= 0; i--) if (e.snaps[i].W !== undefined) return e.snaps[i]; return null; }

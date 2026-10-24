@@ -43,7 +43,7 @@ export class Online {
     for (const [b, v] of Object.entries(values)) if (this.improves(b, v)) { this.best[b] = v; changed.push(b); }
     if (!changed.length) return changed;
     this.saveBest();
-    if (!name || !(await this.connect())) return changed;
+    if (!name || (navigator.webdriver && !new URLSearchParams(location.search).has('board')) || !(await this.connect())) return changed;
     const { ref, set, serverTimestamp, get } = this.db;
     for (const b of changed) {
       try {

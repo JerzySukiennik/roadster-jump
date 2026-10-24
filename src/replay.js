@@ -114,6 +114,7 @@ export class Replay {
     else if (shot === 'land') { const L = this.J.landPos || { x: -55, z: 0 }; pos = new THREE.Vector3(L.x - 9, 0.6, L.z + 9); fov = frame(pos, 7); }
     else { const o = this.orbit; o.yaw += dt * 0.25; pos = tg.clone().add(new THREE.Vector3(Math.sin(o.yaw) * 9, 2.4, Math.cos(o.yaw) * 9)); fov = 45; }
     cam.position.copy(pos); cam.up.set(0, 1, 0); cam.lookAt(tg);
+    const ka = Math.sqrt(Math.max(1, 1.778 / cam.aspect)); if (ka > 1.01) fov = 2 * Math.atan(Math.tan(fov * Math.PI / 360) * ka) * 360 / (2 * Math.PI);
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
     return this.shot;
   }

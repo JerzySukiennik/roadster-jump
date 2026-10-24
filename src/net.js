@@ -41,12 +41,14 @@ export class Net {
 
   got(u, n, s) {
     let p = this.peers.get(u);
+    const fresh = !p;
     if (!p) { p = { u, n: '', t: 0 }; this.peers.set(u, p); }
     p.n = (n || 'Guest').slice(0, 16); p.t = performance.now();
+    if (fresh && this.onJoin) this.onJoin(u, p.n);
     if (this.onState) this.onState(u, p.n, s, p.t);
   }
 
-  drop(u) { if (!this.peers.has(u)) return; this.peers.delete(u); if (this.onLeave) this.onLeave(u); }
+  drop(u) { const p = this.peers.get(u); if (!p) return; this.peers.delete(u); if (this.onLeave) this.onLeave(u, p.n); }
 
   send(s, moving) {
     if (!this.on) return;

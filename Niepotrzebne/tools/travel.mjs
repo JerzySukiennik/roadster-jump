@@ -8,7 +8,7 @@ fs.mkdirSync(out, {recursive: true});
 const b = await chromium.launch({executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']});
 const p = await b.newPage({viewport: {width: 1280, height: 720}});
 p.on('pageerror', (e) => console.log('err', e.message));
-await p.goto((process.env.URL || 'http://127.0.0.1:8840/') + `?q=${q}&fixscale`);
+await p.goto((process.env.URL || 'http://127.0.0.1:8840/') + `?q=${q}&fixscale&mp=off`);
 await p.waitForFunction(() => window.__rj && window.__rj.ready, null, {timeout: 180000});
 await p.evaluate(() => { const R = window.__rj; R.manual(true); R.play(); for (let i = 0; i < 30; i++) R.frame(1 / 60, true); });
 await p.waitForTimeout(1500);

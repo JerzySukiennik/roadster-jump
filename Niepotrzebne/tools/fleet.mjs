@@ -9,7 +9,7 @@ const b = await chromium.launch({executablePath: '/Applications/Google Chrome.ap
 const p = await b.newPage({viewport: {width: 1280, height: 720}});
 p.on('pageerror', (e) => console.log('err', e.message));
 p.on('console', (m) => { if (m.type() === 'error') console.log('console', m.text().slice(0, 200)); });
-await p.goto((process.env.URL || 'http://127.0.0.1:8840/') + `?q=${q}&fixscale`);
+await p.goto((process.env.URL || 'http://127.0.0.1:8840/') + `?q=${q}&fixscale&mp=off`);
 await p.waitForFunction(() => window.__rj && window.__rj.ready, null, {timeout: 180000});
 await p.evaluate(() => { const R = window.__rj; R.manual(true); R.play(); R.lineupStart(); });
 await p.waitForTimeout(1200);

@@ -47,6 +47,6 @@ export class Touch {
 
   show(on) { this.root.classList.toggle('hidden', !on); }
   setEnter(label) { this.enter.classList.toggle('on', !!label); if (label) this.enter.textContent = label; }
-  setGo(label) { const b = this.root.querySelector('[data-t="KeyL"]'); if (b && b.textContent !== label) b.textContent = label; }
+  setGo(label) { const b = this.root.querySelector('[data-t="KeyL"] span'); if (b && b.textContent !== label) b.textContent = label; }
   setFan(on) { const b = this.root.querySelector('[data-t="KeyF"]'); if (b) b.classList.toggle('on', on); }
 }
