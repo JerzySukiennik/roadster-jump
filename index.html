@@ -33,6 +33,7 @@
       <span id="chipFan" class="chip"><b>F</b>Suction<i class="spool"><i id="spool"></i></i></span>
       <span id="chipAssist" class="chip on"><b>T</b>Assist</span>
       <span id="chipCam" class="chip"><b>C</b><i id="camName">Chase</i></span>
+      <span id="chipGo" class="chip"><b>L</b><i id="goName">Lineup</i></span>
     </div>
   </div>
   <div id="goals" class="goals"><div class="goals-head"><span>Film stunts</span><span id="goalsCount" class="goals-count">0/7</span></div><div id="goalsList" class="goals-list"></div><div class="goals-foot"><b>G</b> hide</div></div>
@@ -48,6 +49,7 @@
   <div class="hud-right"><div class="best-l">Best jump</div><div id="best" class="best">0</div><div id="session" class="session"></div></div>
   <div id="prompt" class="prompt"></div>
   <div id="toast" class="toast"></div>
+  <div id="place" class="place"><div class="place-k">Roadster Jump</div><div id="placeName" class="place-n"></div><div id="placeSub" class="place-s"></div></div>
   <div id="replay" class="replay"><span class="rp-dot"></span><span class="rp-tag">Replay</span><div class="rp-bar"><i id="rpFill"></i></div><span id="rpMode" class="rp-mode">TV</span><span class="rp-help" id="rpHelp">C free cam · P exit</span></div>
   <div id="fps" class="fps"></div>
 </div>
@@ -63,6 +65,7 @@
   <div class="tsmall">
     <div class="ts" data-t="KeyF">F</div>
     <div class="ts" data-t="KeyC">Cam</div>
+    <div class="ts ts-go" data-t="KeyL" id="tGo">Lineup</div>
     <div class="ts" data-t="KeyR">Reset</div>
     <div class="ts" data-t="KeyP">Replay</div>
     <div class="ts" data-t="Escape">Menu</div>
@@ -89,7 +92,7 @@
   <div class="ts-left">
     <div class="ts-kicker">From the film <i>Jurek Roadster Kickflip</i></div>
     <h1 class="ts-title"><span>Roadster</span><span>Jump</span></h1>
-    <p class="ts-sub">Suction up the curl. Hang from the ceiling. Kickflip off the lip on cold-gas jets.</p>
+    <p class="ts-sub">Suction up the curl. Hang from the ceiling. Kickflip off the lip on cold-gas jets. Then fly out to the Tesla lineup and ollie over it.</p>
     <label class="ts-name"><span>Driver</span><input id="nameIn" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Your name"></label>
     <div class="ts-actions">
       <button id="play" class="btn primary" disabled><span id="playFill" class="pl-fill"></span><span id="playLabel" class="pl-label">Loading</span></button>
@@ -142,7 +145,7 @@
       <div class="tab hidden" data-tab="keys">
         <div class="keys-tip desk">Press any key to see what it does.</div>
         <div class="kb desk" id="kb">
-          <div class="kb-row"><span class="k" data-code="Escape">Esc</span><span class="gap"></span><span class="k" data-code="KeyR">R</span><span class="k" data-code="KeyT">T</span><span class="k" data-code="KeyP">P</span><span class="k" data-code="KeyM">M</span><span class="k" data-code="KeyG">G</span></div>
+          <div class="kb-row"><span class="k" data-code="Escape">Esc</span><span class="gap"></span><span class="k" data-code="KeyR">R</span><span class="k" data-code="KeyT">T</span><span class="k" data-code="KeyP">P</span><span class="k" data-code="KeyM">M</span><span class="k" data-code="KeyG">G</span><span class="k" data-code="KeyL">L</span></div>
           <div class="kb-row"><span class="k" data-code="KeyE">E</span><span class="k wide" data-code="KeyW">W</span><span class="k" data-code="KeyF">F</span><span class="k" data-code="KeyC">C</span><span class="gap"></span><span class="k" data-code="ArrowUp">↑</span></div>
           <div class="kb-row"><span class="k wide" data-code="KeyA">A</span><span class="k wide" data-code="KeyS">S</span><span class="k wide" data-code="KeyD">D</span><span class="gap"></span><span class="k" data-code="ArrowLeft">←</span><span class="k" data-code="ArrowDown">↓</span><span class="k" data-code="ArrowRight">→</span></div>
           <div class="kb-row"><span class="k xwide" data-code="ShiftLeft">Shift</span><span class="k space" data-code="Space">Space</span></div>
@@ -153,14 +156,15 @@
           <div><b>A / D</b><span>Steer, spin in the air</span></div>
           <div><b>F</b><span>Suction fan: sticks the car to the wall and ceiling</span></div>
           <div><b>Shift</b><span>Rear thrusters boost</span></div>
-          <div><b>Space</b><span>Jets: hop on the ground, soft landing in the air</span></div>
+          <div><b>Space</b><span>Jets: tap to hop, hold to ollie, soft landing in the air</span></div>
+          <div><b>L</b><span>Fly out to the Tesla lineup and back to the curl</span></div>
           <div><b>Arrows</b><span>↑ ↓ flip, ← → kickflip roll</span></div>
           <div><b>E</b><span>Get in or out</span></div>
           <div><b>C</b><span>Camera: chase, horizon, cockpit</span></div>
           <div><b>P</b><span>Replay the last jump (C: TV or free, Space pause, ← → scrub)</span></div>
           <div><b>R · T · M · G</b><span>Reset, flight assist, music, stunts list</span></div>
         </div>
-        <div class="keys-mob mob">Left stick steers. In the air it flips and rolls. Go and Brake drive, Boost fires the rear jets, hold Jets to brake the fall. F turns suction on. Drag anywhere else to look around.</div>
+        <div class="keys-mob mob">Left stick steers. In the air it flips and rolls. Go and Brake drive, Boost fires the rear jets, hold Jets on the ground to ollie and in the air to brake the fall. F turns suction on. Lineup flies to the Teslas and back. Drag anywhere else to look around.</div>
       </div>
     </div>
     <div class="mc-foot">

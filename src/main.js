@@ -1,4 +1,4 @@
-// Roadster Jump: drive the Roadster v2 around the Film14 night arena, climb the giant curl ramp on suction to the upside-down ceiling, launch off the lip and kickflip on cold-gas thrusters. Boot, 120 Hz physics loop with render interpolation, getting in and out as Jurek, tricks and scoring, replays, light show, audio, HUD, touch and the test hooks.
+// Roadster Jump: drive the Roadster v2 around the Film14 night arena, climb the giant curl ramp on suction to the upside-down ceiling, launch off the lip and kickflip on cold-gas thrusters, or press L and the camera flies out to the Tesla lineup 440 m away to jet-ollie and kickflip over it (and back). Boot, 120 Hz physics loop with render interpolation, getting in and out as Jurek, the site flight, tricks and scoring, replays, light show, audio, HUD, touch and the test hooks.
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { TUNING } from './tuning.js';
@@ -22,6 +22,7 @@ import { Walker, PARKED } from './avatar/walker.js';
 import { Moves } from './avatar/moves.js';
 import { Showroom } from './showroom.js';
 import { Goals } from './goals.js';
+import { LINEUP, buildLineup } from './lineup.js';
 
 const qs = new URLSearchParams(location.search);
 const TOUCH = qs.has('touch') || matchMedia('(pointer: coarse)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
@@ -63,6 +64,18 @@ const phys = new Physics(RAPIER, TUNING);
 const rampHandles = new Set(phys.rampCols.map((c) => c.handle));
 ui.loading(0.08, 'Building the arena');
 const A = buildArena(scene, Q);
+const lineup = buildLineup(scene, Q);
+lineup.makeEnv(renderer);
+const siteSpot = [A.padSpot, A.ceilLight].find((l) => !l.isFake), FOG = scene.fog.density;
+const siteHome = { pos: siteSpot.position.clone(), tgt: siteSpot.target.position.clone(), angle: siteSpot.angle, pen: siteSpot.penumbra, I: siteSpot.intensity };
+const siteAway = { pos: new THREE.Vector3(...LINEUP.light.pos), tgt: new THREE.Vector3(...LINEUP.light.tgt), angle: LINEUP.light.angle, pen: LINEUP.light.pen, I: LINEUP.light.I };
+let lightsAt = 'ramp';
+function placeLights(z) {
+  if (z === lightsAt) return;
+  lightsAt = z; const o = z === 'lineup' ? siteAway : siteHome, L = siteSpot.userData.L;
+  siteSpot.position.copy(o.pos); siteSpot.target.position.copy(o.tgt); siteSpot.target.updateMatrixWorld(); siteSpot.angle = o.angle; siteSpot.penumbra = o.pen; siteSpot.intensity = o.I;
+  L.pos.copy(o.pos); L.dir.copy(o.tgt).sub(o.pos).normalize(); L.cos0 = Math.cos(o.angle); L.cos1 = Math.cos(o.angle * (1 - o.pen)); L.I = o.I;
+}
 ui.loading(0.12, 'Loading the Roadster');
 await loadCarAssets(LOW || qs.get('car') === 'lod1' ? 'assets/car/roadster_lod1.glb' : 'assets/car/roadster.glb', (e) => { if (e.total) ui.loading(0.12 + 0.8 * e.loaded / e.total, `Loading the Roadster · ${(e.loaded / 1e6).toFixed(1)} / ${(e.total / 1e6).toFixed(1)} MB`); });
 const view = new CarView(scene, TUNING, Q);
@@ -108,10 +121,55 @@ let mv = { x: 0, z: 0, run: false, jump: false };
 const ramp = { on: false, s: null, lastUpY: 1, lastOn: false, run: false, offT: 0 };
 const events = { land: 0 };
 const session = { jumps: 0, total: 0 };
-let stopT = 0, lastHint = '', fly = null, viewShift = 1, frozen = false;
+let stopT = 0, lastHint = '', fly = null, viewShift = 1, frozen = false, zone = 'ramp', camOverride = null, travel = null;
 const showroom = new Showroom({ view, camera, audio, touch: TOUCH });
 const SHOW_TGT = new THREE.Vector3(START.p[0], 0.62, START.p[2]);
 const goals = new Goals(S.goals, (text, all) => ui.toast(all ? 'All film stunts done' : `Stunt done · ${text}`, 2.2));
+
+const SITES = { ramp: { name: 'The Curl', sub: 'Suction up the wall, hang from the ceiling, launch off the lip' }, lineup: { name: 'The Lineup', sub: 'Five Teslas. Hold Space to ollie, arrows to kickflip' } };
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+function startTravel() {
+  if (travel || fly || replay.active || moves.busy || !started || paused) return;
+  const to = zone === 'lineup' ? 'ramp' : 'lineup', dst = to === 'lineup' ? LINEUP.start : START;
+  const from = inCar || !walker.active ? new THREE.Vector3(car.pos.x, car.pos.y + 0.8, car.pos.z) : new THREE.Vector3(walker.pos.x, walker.pos.y + 1.2, walker.pos.z);
+  const H = new THREE.Vector3(Math.sin(dst.yaw), 0, Math.cos(dst.yaw)), B = new THREE.Vector3(dst.p[0], 0.8, dst.p[2]);
+  const P0 = camera.position.clone(), away = P0.clone().sub(from).setY(0), ab = B.clone().sub(from).setY(0).normalize();
+  if (away.lengthSq() < 0.25) away.copy(ab).negate(); away.normalize();
+  const E = B.clone().addScaledVector(H, -7).add(new THREE.Vector3(0, 1.6, 0)), dist = from.distanceTo(B), alt = Math.min(90, 30 + dist * 0.06);
+  const lat = new THREE.Vector3(-ab.z, 0, ab.x); if (lat.dot(P0.clone().sub(from)) < 0 || Math.abs(P0.z - from.z) < 0.5 && P0.z < 0) lat.negate();
+  const P1 = P0.clone().addScaledVector(away, 8).addScaledVector(lat, 26).add(new THREE.Vector3(0, alt * 1.25, 0));
+  const P2 = E.clone().addScaledVector(H, -Math.min(110, dist * 0.22)).addScaledVector(lat, 30).add(new THREE.Vector3(0, alt, 0));
+  travel = { t: 0, dur: 4.6 + Math.min(1.6, dist / 300), to, dst, A: from, B, P: [P0, P1, P2, E], fov0: camera.fov, done: false, title: false };
+  rig.cut(); ui.toast(to === 'lineup' ? 'Flying out to the lineup' : 'Flying back to the curl', 1.6);
+}
+function arriveTravel(tv) {
+  tv.done = true;
+  if (!inCar) { walker.leave(); inCar = true; moves.cur = null; if (driver.root) driver.attach(view.seatRoot, false); }
+  door.target = 0; door.t = 0; door.close = 0;
+  car.teleport(tv.dst.p, tv.dst.yaw, 0); car.fan = false;
+  tricks.reset(); tricks.ceil = 0; tricks.ceilRun = 0;
+  ev.RUN2 = ev.LIP = ev.LAND = 1e9; ramp.run = false; ramp.on = false; last.result = null;
+  smoke.clear(); lineup.reset(); syncPoses(); acc = 0; zone = tv.to;
+  rig.mode = S.cam; rig.cut(); applyCabin();
+}
+const _tv = { p: new THREE.Vector3(), d: new THREE.Vector3(), l: new THREE.Vector3(), a: new THREE.Vector3(), q: new THREE.Quaternion(), rp: new THREE.Vector3(), rq: new THREE.Quaternion() };
+function travelCamera(dt) {
+  const tv = travel, T = _tv;
+  if (!paused) tv.t += dt;
+  const u = clamp(tv.t / tv.dur, 0, 1), s = u * u * u * (u * (u * 6 - 15) + 10), [P0, P1, P2, P3] = tv.P, k1 = 1 - s;
+  if (!tv.done && u >= 0.5) arriveTravel(tv);
+  if (!tv.title && u >= 0.62) { tv.title = true; const st = SITES[tv.to]; ui.place(st.name, st.sub); }
+  T.rp.copy(camera.position); T.rq.copy(camera.quaternion); const rigFov = camera.fov;
+  T.p.set(0, 0, 0).addScaledVector(P0, k1 * k1 * k1).addScaledVector(P1, 3 * k1 * k1 * s).addScaledVector(P2, 3 * k1 * s * s).addScaledVector(P3, s * s * s);
+  T.d.set(0, 0, 0).addScaledVector(P1.clone().sub(P0), 3 * k1 * k1).addScaledVector(P2.clone().sub(P1), 6 * k1 * s).addScaledVector(P3.clone().sub(P2), 3 * s * s);
+  const w1 = smooth(0.14, 0.42, u);
+  T.l.copy(tv.A).lerp(tv.B, w1);
+  camera.position.copy(T.p); camera.up.set(0, 1, 0); camera.lookAt(T.l);
+  const k = smooth(0.78, 1, u);
+  if (k > 0) { camera.position.lerp(T.rp, k); camera.quaternion.slerp(T.rq, k); }
+  const f1 = tv.fov0 + (46 - tv.fov0) * w1; camera.fov = f1 + (rigFov - f1) * k;
+  if (u >= 1) { travel = null; rig.cut(); }
+}
 
 function setDoor(open) { door.target = open ? 1 : 0; audio.play(open ? 'door_open' : 'door_close', { gain: 0.6 }); }
 const poseBuf = new Float32Array(CarPose.SIZE);
@@ -119,7 +177,7 @@ function syncPoses() { currP.fromSim(car, door.t); currP.write(poseBuf, 0); prev
 syncPoses();
 
 const tricks = new Tricks((kind, d) => {
-  if (kind === 'takeoff') { rec.mark('takeoff', simT, { fromCeil: d.fromCeil }); if (d.fromCeil) { ev.LIP = simT; goals.hit('launch'); } }
+  if (kind === 'takeoff') { rec.mark('takeoff', simT, { fromCeil: d.fromCeil, lineup: !d.fromCeil && LINEUP.corridor(car.pos), dir: Math.sign(car.vel.x) || 1 }); if (d.fromCeil) { ev.LIP = simT; goals.hit('launch'); } }
   else if (kind === 'touch') events.land = Math.max(events.land, clamp(d.v / 14, 0.1, 1));
   else if (kind === 'land' || kind === 'crash') {
     rec.mark(kind, simT, { pos: { x: car.pos.x, z: car.pos.z } }); ev.LAND = simT; ramp.run = false;
@@ -134,6 +192,7 @@ const tricks = new Tricks((kind, d) => {
       });
       if (d.names.some((n) => /flip \d/.test(n) && /Kick|Heel/.test(n))) goals.hit('kick');
       if (d.bull !== null) goals.hit('bull');
+      if (d.lineup >= LINEUP.cars.length && d.roll >= 360) goals.hit('lineup');
     }
     ui.result(d, nb);
     last.result = d;
@@ -154,11 +213,11 @@ function laneAssist(inp) {
 
 function step(h) {
   const air = car.contacts < 2;
-  let inp = inCar && !moves.busy ? input.controls(h, air) : PARKED;
+  let inp = inCar && !moves.busy && !travel ? input.controls(h, air) : PARKED;
   if (inCar) inp = laneAssist(inp);
   car.flight.assist = S.assist;
   car.preStep(h, inp);
-  if (walker.active && !moves.busy) { walker.step(h, mv, rig.footYaw); mv.jump = false; }
+  if (walker.active && !moves.busy) { walker.step(h, travel ? { x: 0, z: 0, run: false, jump: false } : mv, rig.footYaw); mv.jump = false; }
   phys.step();
   rampFollow();
   car.postStep(h);
@@ -175,6 +234,7 @@ function step(h) {
   if (!on && car.contacts >= 2) { ramp.offT += h; if (ramp.offT > 1.5 && tricks.state === 'ground') ramp.run = false; } else ramp.offT = 0;
   if (on && car.up.y < -0.9 && car.contacts >= 3) goals.hit('ceil');
   if (tricks.ceil >= 5) goals.hit('hang');
+  zone = LINEUP.near(inCar || !walker.active ? car.pos : walker.pos) ? 'lineup' : 'ramp';
   tricks.update(h, { contacts: car.contacts, onRamp: on, up: car.up, pos: car.pos, vel: car.vel, ang: car.angLocal, assist: S.assist, lastRampUpY: ramp.lastUpY, lastOnRamp: ramp.lastOn });
   if (++stepN % 2 === 0) rec.push(simT, currP);
   simT += h;
@@ -202,7 +262,9 @@ function rampFollow() {
 }
 
 function reset() {
-  car.teleport(START.p, START.yaw, 0);
+  if (travel) return;
+  const sp = zone === 'lineup' ? LINEUP.start : START;
+  car.teleport(sp.p, sp.yaw, 0); lineup.reset();
   tricks.reset(); tricks.ceil = 0; tricks.ceilRun = 0;
   ev.RUN2 = ev.LIP = ev.LAND = 1e9; ramp.run = false; ramp.on = false;
   smoke.clear(); rig.cut(); if (replay.active) stopReplay();
@@ -213,7 +275,8 @@ function reset() {
 }
 
 function spawnFoot(near) {
-  const p = near || new THREE.Vector3(-5.2, 0, -2.6);
+  const L = !near && zone === 'lineup' ? LINEUP.start.foot : null;
+  const p = near || (L ? new THREE.Vector3(L[0], L[1], L[2]) : new THREE.Vector3(-5.2, 0, -2.6));
   walker.enter(p.x, p.y + 0.02, p.z, near ? walker.yaw : 0.9);
   if (driver.root && driver.root.parent !== scene) driver.attach(scene, true);
   rig.mode = 'foot'; rig.footYaw = near ? rig.footYaw : 0.9; rig.cut();
@@ -257,10 +320,10 @@ function startReplay() {
   if (rec.count < 30) return;
   const ok = replay.start('tv');
   if (!ok) ui.toast('No jump yet, showing the last seconds', 1.8);
-  smoke.clear(); applyCabin();
+  smoke.clear(); lineup.reset(); applyCabin();
   if (driver.root && driver.root.parent !== view.seatRoot && !walker.active) driver.attach(view.seatRoot, false);
 }
-function stopReplay() { replay.stop(); smoke.clear(); rig.cut(); applyCabin(); }
+function stopReplay() { replay.stop(); smoke.clear(); lineup.reset(); rig.cut(); applyCabin(); }
 
 function toggleMenu(on) {
   if (!started) return;
@@ -291,6 +354,8 @@ function actions(dt) {
     if (replay.mode === 'free' && I.hit('Space')) replay.paused = !replay.paused;
     return;
   }
+  if (travel) return;
+  if (I.hit('KeyL')) { startTravel(); return; }
   if (I.hit('KeyE')) { if (inCar) tryExit(); else tryEnter(); }
   if (I.hit('KeyF') && inCar) { car.fan = !car.fan; ui.toast(car.fan ? 'Suction on' : 'Suction off', 1.2); if (car.fan) goals.hit('fan'); }
   if (I.hit('KeyG')) { S.goals = !S.goals; ui.save(); ui.syncGoals(); goals.setVisible(S.goals); }
@@ -310,6 +375,10 @@ function promptText() {
   if (inCar && !moves.busy) {
     const loc = rampLocate(car.pos.x, car.pos.y, car.pos.z);
     if (!car.fan && car.fwdSpeed > 1 && car.pos.x > -14 && car.pos.x < 2 && Math.abs(car.pos.z) < 3 && car.up.y > 0.9 && loc.s < 3) return '<b>F</b>Suction is off. Turn it on to stick to the wall';
+    if (car.contacts >= 3 && LINEUP.approach(car.pos)) {
+      const dir = car.pos.x < LINEUP.stage.x0 ? 1 : -1, vx = car.vel.x * dir, d = ((LINEUP.stage.x0 + LINEUP.stage.x1) / 2 - car.pos.x) * dir, lead = vx * 1.6;
+      if (vx > 5) return d > lead + 5 ? '<b>Space</b>Get ready to ollie over the lineup' : d > lead - 5 ? '<b>Space</b>Now. Hold to ollie · ← → kickflip' : '<b>S</b>Too late to clear it. Brake';
+    }
     if (stopT > 2 && car.up.y > 0.85 && !ramp.on) return '<b>E</b>Get out';
   }
   return '';
@@ -376,6 +445,8 @@ function render(dt, stepPhys = true) {
     const pos = new THREE.Vector3(P.p[0], P.p[1], P.p[2]), quat = new THREE.Quaternion(P.q[0], P.q[1], P.q[2], P.q[3]);
     rig.car(dt, { pos, quat, vel: new THREE.Vector3(P.vx, P.vy, P.vz), contacts: P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3], fwdSpeed: car.fwdSpeed, eye: view.eye(new THREE.Vector3()) });
   }
+  if (travel) travelCamera(dt);
+  if (camOverride) { const o = camOverride; camera.position.set(...o.pos); camera.up.set(0, 1, 0); camera.lookAt(...o.at); if (camera.fov !== o.fov) camera.fov = o.fov; }
   if (fly) {
     fly.t += dt; const u = Math.min(1, fly.t / fly.dur), e = u * u * u * (u * (u * 6 - 15) + 10);
     camera.position.lerpVectors(fly.pos, camera.position, e); camera.quaternion.slerpQuaternions(fly.quat, camera.quaternion, e); camera.fov = fly.fov + (camera.fov - fly.fov) * e;
@@ -394,12 +465,15 @@ function render(dt, stepPhys = true) {
   const loc = rampLocate(P.p[0], P.p[1], P.p[2]);
   ev.carS = (replay.active ? loc.onDeck && (P.contact[0] + P.contact[1] + P.contact[2] + P.contact[3]) > 0 : ramp.on) ? loc.s : null;
   A.update(te, camera.position, ev);
+  placeLights(travel ? (travel.t / travel.dur > 0.3 ? travel.to : travel.to === 'lineup' ? 'ramp' : 'lineup') : Math.hypot(camera.position.x - LINEUP.cx, camera.position.z - LINEUP.line) < 250 ? 'lineup' : 'ramp');
+  scene.fog.density = FOG * (travel ? 1 - 0.72 * Math.sin(Math.PI * clamp(travel.t / travel.dur, 0, 1)) : 1);
+  lineup.update(paused ? 0 : dt * (replay.active ? replay.speed() : 1), te, P, qs.get('smoke') !== '0' ? smoke : null, lightsAt === 'lineup' ? siteSpot : null);
   if (audio.ctx || !showroom.active) audio.update(dt, P, { cam: camera, rate: replay.active ? replay.speed() : 1, inside: inCar && rig.mode === 'fpp' && !replay.active, load: inCar && !replay.active ? car.load : 0 });
   if (inCar && rig.mode === 'fpp') view.screen.draw(P.speed / 0.44704, P.fan, S.assist);
-  const pr = started ? promptText() : '';
+  const pr = started && !travel ? promptText() : '';
   if (pr !== lastHint) { lastHint = pr; touch && touch.setEnter(/Get in/.test(pr) ? 'Get in' : /Get out/.test(pr) ? 'Get out' : null); }
-  if (touch) touch.setFan(car.fan);
-  if (started) ui.hud({ dt, mph: P.speed / 0.44704, gear: !inCar ? 'P' : car.gear === 'R' ? 'R' : car.parkedT > 1.2 ? 'P' : 'D', spool: car.fanSpool, hang: !replay.active && ramp.on && car.up.y < -0.7 ? tricks.ceil : 0, fan: car.fan, assist: S.assist, cam: inCar ? rig.mode : 'foot', valves: P.valve, live: replay.active ? null : tricks.live(), prompt: TOUCH ? (/Suction/.test(pr) ? 'Suction is off. Tap F to stick to the wall' : '') : pr, session: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} · ${session.total.toLocaleString('en-US')} pts` : '', replay: replay.active ? { p: replay.progress(), mode: replay.mode } : null, touch: TOUCH, fps: qs.has('debug') ? `${Math.round(fpsBuf.length / Math.max(0.001, fpsBuf.reduce((a, b) => a + b, 0)))} fps · ${scale.toFixed(2)}x` : '' });
+  if (touch) { touch.setFan(car.fan); touch.setGo(zone === 'lineup' ? 'Ramp' : 'Lineup'); }
+  if (started) ui.hud({ dt, mph: P.speed / 0.44704, gear: !inCar ? 'P' : car.gear === 'R' ? 'R' : car.parkedT > 1.2 ? 'P' : 'D', spool: car.fanSpool, hang: !replay.active && ramp.on && car.up.y < -0.7 ? tricks.ceil : 0, fan: car.fan, assist: S.assist, cam: inCar ? rig.mode : 'foot', go: zone === 'lineup' ? 'Ramp' : 'Lineup', valves: P.valve, live: replay.active ? null : tricks.live(), prompt: TOUCH ? (/Suction/.test(pr) ? 'Suction is off. Tap F to stick to the wall' : /Now\./.test(pr) ? 'Now. Hold Jets to ollie' : /ollie/.test(pr) ? 'Get ready to ollie over the lineup' : /Too late/.test(pr) ? 'Too late to clear it. Brake' : '') : pr, session: session.jumps ? `${session.jumps} jump${session.jumps > 1 ? 's' : ''} · ${session.total.toLocaleString('en-US')} pts` : '', replay: replay.active ? { p: replay.progress(), mode: replay.mode } : null, touch: TOUCH, fps: qs.has('debug') ? `${Math.round(fpsBuf.length / Math.max(0.001, fpsBuf.reduce((a, b) => a + b, 0)))} fps · ${scale.toFixed(2)}x` : '' });
   const r0 = performance.now();
   if (window.__rjNoDraw) { perf.rend = 0; return; }
   if (qs.get('post') === '0') { renderer.setRenderTarget(null); renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.render(scene, camera); } else post.render(scene, camera, frameT);
@@ -415,7 +489,19 @@ canvas.addEventListener('pointermove', (e) => { if (showroom.active) showroom.on
 canvas.addEventListener('pointerup', () => { if (showroom.active) showroom.onUp(); });
 canvas.addEventListener('pointerleave', (e) => { if (showroom.active && e.pointerType === 'mouse') showroom.onLeave(); });
 
-for (const on of [true, false]) { view.jetLight.visible = on; try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); } catch (e) { /* compile on first frame */ } }
+async function precompile() {
+  const was = view.jetLight.visible;
+  const rt = qs.get('post') === '0' ? null : post.RT, wide = new THREE.PerspectiveCamera(150, 1, 0.1, 1600); wide.position.set(car.pos.x - 4, 2.5, car.pos.z - 4); wide.lookAt(car.pos.x, 0.8, car.pos.z);
+  for (const on of [true, false]) {
+    view.jetLight.visible = on; renderer.setRenderTarget(rt);
+    try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); } catch (e) { /* compile on first frame */ }
+    const hidden = []; scene.traverse((o) => { if (!o.visible && !o.isLight) { hidden.push(o); o.visible = true; } });
+    renderer.setRenderTarget(rt); renderer.render(scene, wide);
+    for (const o of hidden) o.visible = false;
+  }
+  renderer.setRenderTarget(null); view.jetLight.visible = was;
+}
+await precompile();
 ui.loading(1, 'Ready');
 showroom.start(); ui.showTitle(); ui.playProgress(0.05, 'Loading Jurek');
 document.getElementById('showHint').textContent = TOUCH ? 'Tap a part. Drag to turn it.' : 'Hover the car. Drag to turn it. Click for sound.';
@@ -427,7 +513,7 @@ clearInterval(progT);
 if (avatarOk) spawnFoot(); else { inCar = true; rig.mode = S.cam; }
 applyCabin();
 ui.playProgress(0.95, 'Preparing');
-try { if (renderer.compileAsync) await renderer.compileAsync(scene, camera); } catch (e) { /* compile on first frame */ }
+await precompile();
 function play(o = {}) {
   if (started) return;
   started = true; ui.hideStart(); ui.showHud(true); touch && touch.show(true);
@@ -440,7 +526,13 @@ function play(o = {}) {
 ui.ready(play);
 
 window.__rj = {
-  ready: true, perf, showroom, goals, Q, car, phys, view, rec, replay, tricks, ui, S, ev, ramp, driver, walker,
+  ready: true, perf, showroom, goals, Q, car, phys, view, rec, replay, tricks, ui, S, ev, ramp, driver, walker, lineup, LINEUP, renderer, scene,
+  lineupStart: () => { zone = 'lineup'; reset(); },
+  rampStart: () => { zone = 'ramp'; reset(); },
+  travel: () => { startTravel(); return !!travel; },
+  traveling: () => (travel ? { t: travel.t, dur: travel.dur, to: travel.to } : null),
+  zone: () => zone,
+  shot: (pos, at, fov = 40) => { camOverride = pos ? { pos, at, fov } : null; },
   play: () => { window.__rjTest = true; play({ instant: true }); },
   board: () => { if (!inCar) { moves.cur = null; door.target = 0; board(); } },
   input: (o) => { input.override = o ? { throttle: 0, brake: 0, steer: 0, boost: false, lift: false, pitch: 0, roll: 0, ...o } : null; },

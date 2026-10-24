@@ -1,9 +1,10 @@
-// Roadster Jump film stunts: the seven things the Roadster does in the film as a first-run checklist (get in, suction, climb to the ceiling, hang 5 s, ceiling launch, kickflip landing, the X), saved per browser, with the current step highlighted and its key shown.
+// Roadster Jump film stunts: the things the Roadster does in the two films as a first-run checklist (get in, suction, climb to the ceiling, hang 5 s, ceiling launch, kickflip landing, the X, the jet ollie kickflip over the Tesla lineup), saved per browser, with the current step highlighted and its key shown.
 const LIST = [
   ['in', 'Get in the Roadster', 'E'], ['fan', 'Turn on suction', 'F'], ['ceil', 'Drive up to the ceiling', 'W'], ['hang', 'Hang upside down for 5 s', 'S'],
   ['launch', 'Launch off the ceiling lip', 'W'], ['kick', 'Land a kickflip', '← →'], ['bull', 'Land on the X', 'Space'],
+  ['lineup', 'Kickflip over the lineup', 'L'],
 ];
-const TOUCH_KEY = { in: 'Get in', fan: 'F', ceil: 'Go', hang: 'Brake', launch: 'Go', kick: 'Stick', bull: 'Jets' };
+const TOUCH_KEY = { in: 'Get in', fan: 'F', ceil: 'Go', hang: 'Brake', launch: 'Go', kick: 'Stick', bull: 'Jets', lineup: 'Lineup' };
 
 export class Goals {
   constructor(show, onDone) {

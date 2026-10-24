@@ -16,4 +16,5 @@
   - tyre_roll_loop: orlandorizo, https://freesound.org/people/orlandorizo/sounds/591079/
   - wind_loop: kevinklang, https://freesound.org/people/kevinklang/sounds/841982/
 - EV motor sound: Jurek's preset of the Roadster 88 motor synth.
+- Lineup vehicles (Model 3, Model Y, Semi, Cybertruck, Cybercab), their stage, towers and power lines: built in code for this game (the Cybertruck profile follows the hand-built one from Avatar Film5). Reference: Tesla's "Do a kickflip" film and event photos.
 - Libraries: three.js (MIT), Rapier (Apache-2.0), Firebase JS SDK.

@@ -1,7 +1,8 @@
-// Roadster Jump replay: a 60 Hz ring buffer of packed car poses with event marks (ramp entry, takeoff, landing), and playback of the last jump either through the Film14-style TV director (tele from behind the run-in, wide side, low under the lip, landing cam, slow motion in the air) or a free orbit camera with pause, scrub and zoom.
+// Roadster Jump replay: a 60 Hz ring buffer of packed car poses with event marks (ramp entry, takeoff, landing), and playback of the last jump either through the TV director (ramp: tele from behind the run-in, wide side, low under the lip; lineup: tele behind the approach, the straight-on front shot from the film, low three-quarter at the exit end; landing cam and slow motion in the air for both) or a free orbit camera with pause, scrub and zoom.
 import * as THREE from 'three';
 import { CarPose } from './carView.js';
 import { rampLocate } from './ramp.js';
+import { LINEUP } from './lineup.js';
 
 const HZ = 60, SEC = 75;
 
@@ -43,7 +44,7 @@ export class Recorder {
     if (!take) return null;
     const ramp = [...this.marks].reverse().find((m) => m.kind === 'ramp' && m.t < take.t && m.t > take.t - 20);
     const t0 = Math.max(this.first(), Math.min(take.t - 3.5, ramp ? ramp.t - 2.0 : take.t - 3.5));
-    return { t0, t1: Math.min(this.last(), land.t + 3.2), take: take.t, land: land.t, ramp: ramp ? ramp.t : null, fromCeil: !!take.fromCeil, landPos: land.pos };
+    return { t0, t1: Math.min(this.last(), land.t + 3.2), take: take.t, land: land.t, ramp: ramp ? ramp.t : null, fromCeil: !!take.fromCeil, landPos: land.pos, lineup: !!take.lineup, dir: take.dir || 1 };
   }
 }
 
@@ -88,6 +89,7 @@ export class Replay {
     const J = this.J, t = this.t;
     const loc = rampLocate(P.p[0], P.p[1], P.p[2]);
     if (J.take === null) return 'orbit';
+    if (J.lineup) return t < J.take - 0.9 ? 'lapp' : t < J.take + Math.max(0.6, (J.land - J.take) * 0.5) ? 'lfront' : t < J.land - 0.1 ? 'lside' : 'land';
     if (t < (J.ramp ?? J.take - 2.5) - 0.2) return 'tele';
     if (t < J.take - (J.fromCeil ? 1.1 : 0.4)) return loc.s > 2 && loc.s < 24 ? 'side' : 'tele';
     if (t < J.take + Math.max(0.5, (J.land - J.take) * 0.45)) return J.fromCeil ? 'lip' : 'side';
@@ -112,6 +114,9 @@ export class Replay {
       if (shot === 'tele') { pos = new THREE.Vector3(-43.2, 0.95, -0.3); fov = frame(pos, 4.2); }
       else if (shot === 'side') { pos = new THREE.Vector3(-46, 3.5, 30); fov = frame(pos, 9); }
       else if (shot === 'lip') { pos = new THREE.Vector3(-21, 0.5, 6.5); fov = 58; }
+      else if (shot === 'lapp') { const S = LINEUP.stage; pos = new THREE.Vector3(this.J.dir > 0 ? S.x0 - 46 : S.x1 + 46, 1.0, LINEUP.line + 2.2); fov = frame(pos, 5); }
+      else if (shot === 'lfront') { const S = LINEUP.stage, mid = new THREE.Vector3((S.x0 + S.x1) / 2, 2.8, (S.z0 + S.z1) / 2); tg = mid.lerp(this.focus, 0.35); pos = new THREE.Vector3(mid.x, 1.3, S.z0 - 22); fov = 40; }
+      else if (shot === 'lside') { const S = LINEUP.stage; pos = new THREE.Vector3(this.J.dir > 0 ? S.x1 + 9 : S.x0 - 9, 0.75, S.z0 - 8); fov = frame(pos, 7.5); }
       else if (shot === 'land') { const L = this.J.landPos || { x: -55, z: 0 }; pos = new THREE.Vector3(L.x - 9, 0.6, L.z + 9); fov = frame(pos, 7); }
       else { const o = this.orbit; o.yaw += dt * 0.25; pos = tg.clone().add(new THREE.Vector3(Math.sin(o.yaw) * 9, 2.4, Math.cos(o.yaw) * 9)); fov = 45; }
     }

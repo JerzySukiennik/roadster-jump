@@ -1,4 +1,4 @@
-// Roadster Jump touch controls: left analog stick (steer on the ground, flip and roll in the air, walk on foot), hold buttons for throttle, brake, boost and jets, tap buttons for suction, camera, reset, replay, menu and get in or out, and drag anywhere else on the screen to look around.
+// Roadster Jump touch controls: left analog stick (steer on the ground, flip and roll in the air, walk on foot), hold buttons for throttle, brake, boost and jets, tap buttons for suction, camera, the flight to the lineup and back, reset, replay, menu and get in or out, and drag anywhere else on the screen to look around.
 export class Touch {
   constructor(input) {
     this.input = input; this.root = document.getElementById('touch');
@@ -47,5 +47,6 @@ export class Touch {
 
   show(on) { this.root.classList.toggle('hidden', !on); }
   setEnter(label) { this.enter.classList.toggle('on', !!label); if (label) this.enter.textContent = label; }
+  setGo(label) { const b = this.root.querySelector('[data-t="KeyL"]'); if (b && b.textContent !== label) b.textContent = label; }
   setFan(on) { const b = this.root.querySelector('[data-t="KeyF"]'); if (b) b.classList.toggle('on', on); }
 }

@@ -1,4 +1,4 @@
-// Roadster Jump smoke: live tyre smoke, landing bursts, cold-gas vapour and ground billows as instanced camera-facing sprites with the Film14 "cauliflower" atlas (lit puffs with self-shadow from a density grid and forward scattering from the arena lights), emitted from the car pose so replays smoke the same way.
+// Roadster Jump smoke: live tyre smoke, landing bursts, cold-gas vapour and ground billows (rate-capped so a jet ollie off the tarmac stays light on fill) as instanced camera-facing sprites with the Film14 "cauliflower" atlas (lit puffs with self-shadow from a density grid and forward scattering from the arena lights), emitted from the car pose so replays smoke the same way.
 import * as THREE from 'three';
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -99,6 +99,7 @@ void main(){ float k = floor(vVar * 3.999); vec2 o = vec2(mod(k, 2.0), floor(k /
         this.emit(p0, v0, { life: 5 + 3 * rnd(), s0: 0.7 + 0.6 * rnd(), grow: 2.6 + 2.2 * rnd(), k: 1.2, a: 0.22 });
       }
     }
+    this.billow = Math.min(12, (this.billow || 0) + dt * (this.N > 1000 ? 110 : 45));
     for (let i = 0; i < 10; i++) {
       const k = P.valve[i];
       if (k < 0.05) continue;
@@ -111,7 +112,8 @@ void main(){ float k = floor(vVar * 3.999); vec2 o = vec2(mod(k, 2.0), floor(k /
         const v0 = d.clone().multiplyScalar(7 + 5 * rnd()).add(vel.clone().multiplyScalar(0.25)).add(new THREE.Vector3((rnd() - 0.5) * 2, (rnd() - 0.5) * 2, (rnd() - 0.5) * 2));
         this.emit(p0.clone().addScaledVector(d, 0.6), v0, { life: 0.7 + 0.6 * rnd(), s0: 0.6, grow: 2.2 + 1.2 * rnd(), k: 3.4, a: 0.08, buoy: 0.1, kind: 1 });
         const g = P.ground[i];
-        if (d.y < -0.5 && g < 9 && rnd() < (1 - g / 9) * 0.6) {
+        if (d.y < -0.5 && g < 9 && this.billow >= 1 && rnd() < (1 - g / 9) * 0.6) {
+          this.billow -= 1;
           const hit = p0.clone().addScaledVector(d, g); hit.y += 0.3;
           const out = hit.clone().sub(pos).setY(0).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), (rnd() - 0.5) * 2.4);
           this.emit(hit, out.multiplyScalar(5 + 6 * rnd()).add(new THREE.Vector3(0, 0.6 + rnd(), 0)).add(vel.clone().setY(0).multiplyScalar(0.4)), { life: 3.5 + 2.5 * rnd(), s0: 0.9, grow: 3.0 + 2.2 * rnd(), k: 1.1, a: 0.15, buoy: 0.3 });

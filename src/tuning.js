@@ -37,7 +37,7 @@ export const TUNING = {
     rear: { thrust_each: 5500, positions: [[0.36, 0.495, -1.975], [0.12, 0.495, -1.975], [-0.12, 0.495, -1.975], [-0.36, 0.495, -1.975]], pitch_range_deg: [0, 95], side_deflect_deg: 30, exit_m: 0.077 },
     front: { thrust_each: 9000, positions: [[0.40, 0.29, 2.02], [-0.40, 0.29, 2.02]], pitch_range_deg: [0, 95], side_deflect_deg: 30, deploy_time_s: 0.30, retract_delay_s: 1.2, deploy_travel_m: 0.13, exit_m: 0.062 },
     side: { thrust_each: 4500, positions: [[0.80, 0.165, 0.86], [0.80, 0.165, -0.90], [-0.80, 0.165, 0.86], [-0.80, 0.165, -0.90]], pitch_range_deg: [-30, 30], side_deflect_deg: 30, deploy_time_s: 0.25, retract_delay_s: 1.2, deploy_travel_m: 0.055, exit_m: 0.052 },
-    valve_open_s: 0.05, valve_close_s: 0.08, gimbal_rate_deg_s: 520, hop_tap_max_s: 0.25,
+    valve_open_s: 0.05, valve_close_s: 0.08, gimbal_rate_deg_s: 520, hop_tap_max_s: 0.25, hop_hold_max_s: 0.6,
     ground_effect: { height: 1.5, boost: 0.12 },
   },
   flight: {

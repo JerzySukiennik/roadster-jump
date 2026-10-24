@@ -1,4 +1,4 @@
-// Roadster Jump flight computer (adapted from Roadster 88): maps player intent to cold-gas thrust: ground boost and retro, hop, ballistic air with rate control for flips and spins, lift, and the optional flight assist (stops the spin when the keys are released, rolls the wheels down before touchdown, turns lift into a soft-landing glide) through the control allocator.
+// Roadster Jump flight computer (adapted from Roadster 88): maps player intent to cold-gas thrust: ground boost and retro, the jet ollie (tap for a hop, hold to keep firing up to about 8 m, flip and roll already on the way up), ballistic air with rate control for flips and spins, lift, and the optional flight assist (stops the spin when the keys are released, rolls the wheels down before touchdown, turns lift into a soft-landing glide) through the control allocator.
 import { V3, Quat, clamp, DEG, MPH } from './math.js';
 import { Allocator } from './allocator.js';
 
@@ -13,6 +13,26 @@ export class FlightComputer {
     this.leveling = 0; this.timeToImpact = 99;
     this.wantF = new V3(); this.wantT = new V3();
     this._q = new Quat(); this._q2 = new Quat(); this._e = new V3(); this._v = new V3(); this._fw = new V3(); this._fwd = new V3(); this._lf = new V3();
+  }
+
+  rates(inp, w, I) {
+    const F = this.F, R = F.rate_deg_s, kr = F.rate_gain, rot = { x: inp.pitch, y: inp.steer, z: inp.roll };
+    for (const [k, ik, rate] of [['x', 'pitch', R.pitch], ['y', 'yaw', R.yaw], ['z', 'roll', R.roll]]) {
+      const cmd = rot[k];
+      if (Math.abs(cmd) > 0.05) this.wantT[k] = I[ik] * kr * (cmd * rate * DEG - w[k]);
+      else if (this.assist) this.wantT[k] = -I[ik] * kr * w[k];
+    }
+  }
+
+  level(q, fwdW, v, w, I, inp) {
+    const F = this.F, yaw = Math.atan2(fwdW.x, fwdW.z);
+    const lvl = Math.abs(fwdW.y) > 0.95 ? this._q2.setFromEulerYXZ(0, Math.atan2(v.x, v.z), 0) : this._q2.setFromEulerYXZ(0, yaw, 0);
+    this._q.copy(q).conjugate().multiply(lvl);
+    const e = this._q.toAxisAngleVec(this._e);
+    this.wantT.x = I.pitch * (F.level_kp * e.x - F.level_kd * w.x);
+    this.wantT.z = I.roll * (F.level_kp * e.z - F.level_kd * w.z);
+    if (Math.abs(inp.steer) < 0.05) this.wantT.y = -I.yaw * F.rate_gain * w.y;
+    this.leveling = 1;
   }
 
   update(dt, inp, s) {
@@ -30,7 +50,7 @@ export class FlightComputer {
       this.hopT += dt;
       th.requestFront(); th.requestSide();
       if (th.deploy >= 0.5 || th.maxFront() <= 0) this.hopReady += dt;
-      if (this.hopReady >= T.hop_tap_max_s && (!inp.lift || !grounded)) this.mode = grounded ? 'ground' : 'air';
+      if (this.hopReady >= T.hop_tap_max_s && (!inp.lift || this.hopReady >= T.hop_hold_max_s || (grounded && this.hopT > 0.6))) this.mode = grounded ? 'ground' : 'air';
     } else if (this.mode === 'air') {
       if (grounded && this.groundedT > 0.05) this.mode = 'ground';
     }
@@ -59,32 +79,22 @@ export class FlightComputer {
     }
 
     if (this.mode === 'hop') {
-      fw.set(0, 1, 0).applyQuat(q).scale(rearMax + frontMax);
+      const upHop = this._v.set(0, 1, 0).applyQuat(q).y;
+      fw.set(0, 1, 0).applyQuat(q).scale((rearMax + frontMax + 0.6 * sideMax) * clamp((upHop - 0.35) / 0.5, 0, 1));
       if (inp.boost) fw.addScaled(fh, rearMax * gov);
-      this.wantT.x = -I.pitch * F.rate_gain * w.x * 0.6;
-      this.wantT.z = -I.roll * F.rate_gain * w.z * 0.6;
+      if (grounded) {
+        this.wantT.x = -I.pitch * F.rate_gain * w.x * 0.6;
+        this.wantT.z = -I.roll * F.rate_gain * w.z * 0.6;
+      } else {
+        this.rates(inp, w, I);
+        if (this.assist && Math.abs(inp.pitch) < 0.05 && Math.abs(inp.roll) < 0.05) this.level(q, fwdW, v, w, I, inp);
+      }
     } else {
       if (inp.boost) fw.addScaled(fh, rearMax * gov);
-      const rot = { x: inp.pitch, y: inp.steer, z: inp.roll };
-      const R = F.rate_deg_s, kr = F.rate_gain;
-      const ax = [['x', 'pitch', R.pitch], ['y', 'yaw', R.yaw], ['z', 'roll', R.roll]];
-      for (const [k, ik, rate] of ax) {
-        const cmd = rot[k];
-        if (Math.abs(cmd) > 0.05) this.wantT[k] = I[ik] * kr * (cmd * rate * DEG - w[k]);
-        else if (this.assist) this.wantT[k] = -I[ik] * kr * w[k];
-      }
+      this.rates(inp, w, I);
       const upY = this._v.set(0, 1, 0).applyQuat(q).y;
       const near = this.timeToImpact < F.level_time_s || (s.clearance < 3.5 && v.y < 1);
-      if (this.assist && (near || inp.lift) && Math.abs(inp.pitch) < 0.05 && Math.abs(inp.roll) < 0.05) {
-        const yaw = Math.atan2(fwdW.x, fwdW.z);
-        const lvl = Math.abs(fwdW.y) > 0.95 ? this._q2.setFromEulerYXZ(0, Math.atan2(v.x, v.z), 0) : this._q2.setFromEulerYXZ(0, yaw, 0);
-        this._q.copy(q).conjugate().multiply(lvl);
-        const e = this._q.toAxisAngleVec(this._e);
-        this.wantT.x = I.pitch * (F.level_kp * e.x - F.level_kd * w.x);
-        this.wantT.z = I.roll * (F.level_kp * e.z - F.level_kd * w.z);
-        if (Math.abs(inp.steer) < 0.05) this.wantT.y = -I.yaw * kr * w.y;
-        this.leveling = 1;
-      }
+      if (this.assist && (near || inp.lift) && Math.abs(inp.pitch) < 0.05 && Math.abs(inp.roll) < 0.05) this.level(q, fwdW, v, w, I, inp);
       if (inp.lift) {
         if (this.assist) {
           const L = F.land_rate;

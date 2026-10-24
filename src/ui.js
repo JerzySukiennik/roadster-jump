@@ -1,4 +1,4 @@
-// Roadster Jump UI: the ramp loader (a dot rides the curl as assets arrive and jumps off the lip when done), the title screen over the showroom car (cursor tooltips, Interact/Exploded switch, live leaderboard preview, progress inside Play), the HUD (rolling speed, gear, suction spool, thruster dots, live flip counter and hang timer, result card with counting points and a breakdown, best score, prompts, toasts, replay bar) and the menu (sliding tab and segment inks, settings with live values, quick actions, interactive keyboard, leaderboards).
+// Roadster Jump UI: the ramp loader (a dot rides the curl as assets arrive and jumps off the lip when done), the title screen over the showroom car (cursor tooltips, Interact/Exploded switch, live leaderboard preview, progress inside Play), the HUD (rolling speed, gear, suction spool, thruster dots, live flip counter and hang timer, result card with counting points and a breakdown, best score, prompts, toasts, the location title after a site flight, replay bar) and the menu (sliding tab and segment inks, settings with live values, quick actions, interactive keyboard, leaderboards).
 import { BOARDS } from './online.js';
 
 const $ = (id) => document.getElementById(id);
@@ -7,7 +7,8 @@ const KEYS = {
   KeyW: ['W', 'Throttle. On foot, walk.'], KeyS: ['S', 'Brake. Hold it when stopped to reverse.'], KeyA: ['A', 'Steer left. In the air, spin.'], KeyD: ['D', 'Steer right. In the air, spin.'],
   KeyF: ['F', 'Suction fan: sticks the car to the wall and the ceiling.'], KeyE: ['E', 'Get in or out of the Roadster.'], KeyC: ['C', 'Camera: chase, horizon, cockpit.'], KeyR: ['R', 'Reset the car to the start.'],
   KeyT: ['T', 'Flight assist on or off. Off gives x1.5 points.'], KeyP: ['P', 'Replay the last jump.'], KeyM: ['M', 'Music on or off.'], KeyG: ['G', 'Show or hide the film stunts list.'],
-  ShiftLeft: ['Shift', 'Rear thrusters boost. On foot, run.'], Space: ['Space', 'Jets: hop on the ground, soft landing in the air.'], Escape: ['Esc', 'Menu.'],
+  ShiftLeft: ['Shift', 'Rear thrusters boost. On foot, run.'], Space: ['Space', 'Jets: tap to hop, hold to ollie, soft landing in the air.'], Escape: ['Esc', 'Menu.'],
+  KeyL: ['L', 'Fly out to the Tesla lineup and back to the curl.'],
   ArrowUp: ['↑', 'Frontflip in the air.'], ArrowDown: ['↓', 'Backflip in the air.'], ArrowLeft: ['←', 'Heelflip roll in the air.'], ArrowRight: ['→', 'Kickflip roll in the air.'],
 };
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
@@ -15,7 +16,7 @@ const easeOut = (t) => 1 - Math.pow(1 - t, 3);
 export class UI {
   constructor(settings, online) {
     this.S = settings; this.online = online;
-    this.el = { mph: $('mph'), gear: $('gear'), spool: $('spool'), dots: $('dots'), fan: $('chipFan'), assist: $('chipAssist'), cam: $('camName'), trick: $('trick'), tBig: $('trickBig'), tSub: $('trickSub'), tMeta: $('trickMeta'),
+    this.el = { mph: $('mph'), gear: $('gear'), spool: $('spool'), dots: $('dots'), fan: $('chipFan'), assist: $('chipAssist'), cam: $('camName'), go: $('goName'), place: $('place'), placeN: $('placeName'), placeS: $('placeSub'), trick: $('trick'), tBig: $('trickBig'), tSub: $('trickSub'), tMeta: $('trickMeta'),
       result: $('result'), rNames: $('resNames'), rQ: $('resQuality'), rPts: $('resPts'), rParts: $('resParts'), rRank: $('resRank'), best: $('best'), session: $('session'), prompt: $('prompt'), toast: $('toast'),
       replay: $('replay'), rpFill: $('rpFill'), rpMode: $('rpMode'), rpHelp: $('rpHelp'), fps: $('fps'), tip: $('tip'), tipT: $('tipT'), tipD: $('tipD') };
     for (let i = 0; i < 10; i++) { const d = document.createElement('i'); if (i === 4 || i === 6) d.className = 'g'; this.el.dots.appendChild(d); }
@@ -109,6 +110,8 @@ export class UI {
     this.set('fan', h.fan, (v) => { E.fan.classList.toggle('on', v); this.ping(E.fan); });
     this.set('assist', h.assist, (v) => { E.assist.classList.toggle('on', v); this.ping(E.assist); });
     this.set('cam', h.cam, (v) => { E.cam.textContent = CAM[v] || v; });
+    this.set('go', h.go, (v) => { E.go.textContent = v; });
+    if (this.placeT > 0) { this.placeT -= h.dt; if (this.placeT <= 0) E.place.classList.remove('on'); }
     for (let i = 0; i < 10; i++) { const on = h.valves[i] > 0.08; if (this.dots[i]._on !== on) { this.dots[i]._on = on; this.dots[i].classList.toggle('on', on); } }
     const L = h.live;
     if (L && L.air > 0.35) {
@@ -137,6 +140,8 @@ export class UI {
   }
 
   ping(el, cls = 'ping') { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+  place(name, sub, t = 3.2) { const E = this.el; E.placeN.textContent = name; E.placeS.textContent = sub; E.place.classList.remove('on'); void E.place.offsetWidth; E.place.classList.add('on'); this.placeT = t; }
 
   toast(msg, t = 1.6) { const E = this.el; E.toast.textContent = msg; E.toast.classList.remove('on'); void E.toast.offsetWidth; E.toast.classList.add('on'); this.toastT = t; }
 

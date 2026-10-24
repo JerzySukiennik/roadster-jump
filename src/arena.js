@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {RAMP, rampAt} from './ramp.js';
+import {LINEUP} from './lineup.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const PI = Math.PI;
@@ -301,6 +302,7 @@ void main(){ float xn = vR.x, row = vR.y, v = vR.z;
       const hd = new THREE.Group(); hd.position.set(0, 2.2, 0); g.add(hd); hd.lookAt(-30, 1, 0); hd.add(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.45, 0.14), fxM)); const fc = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.36), workM); fc.position.z = 0.075; hd.add(fc); } }
   { const n = 90, pos = [], col = [];
     for (let i = 0; i < n; i++) { const a = hash(i * 2.1) * 2 * PI, r = 170 + 260 * hash(i * 5.7), warm = hash(i * 9.3);
+      if (Math.hypot(-20 + Math.cos(a) * r - LINEUP.cx, Math.sin(a) * r - LINEUP.line) < 110) continue;
       pos.push(-20 + Math.cos(a) * r, 0.6 + 7 * Math.pow(hash(i * 3.9), 3), Math.sin(a) * r);
       const k = 1.2 + 3 * hash(i * 7.7); if (warm > 0.8) col.push(k, 0.12 * k, 0.08 * k); else if (warm > 0.45) col.push(k, 0.62 * k, 0.32 * k); else col.push(k, k, 0.95 * k); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));

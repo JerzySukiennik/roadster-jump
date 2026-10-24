@@ -1,4 +1,5 @@
-// Roadster Jump tricks: tracks ceiling hang time on the ramp, takeoff, air time, body-axis rotation (kickflips and heelflips on roll, front and back flips on pitch, spins on yaw), distance and touchdown, then names the jump, scores it (rotation, air, distance, ceiling, landing quality, assist-off bonus) and reports crashes.
+// Roadster Jump tricks: tracks ceiling hang time on the ramp, takeoff, air time, body-axis rotation (kickflips and heelflips on roll, front and back flips on pitch, spins on yaw), which Teslas of the lineup the Roadster cleared, distance and touchdown, then names the jump, scores it (rotation, air, distance, ceiling, lineup, landing quality, assist-off bonus) and reports crashes.
+import { LINEUP } from './lineup.js';
 const DEG = 180 / Math.PI;
 
 export class Tricks {
@@ -9,7 +10,7 @@ export class Tricks {
   }
 
   reset() {
-    this.state = 'ground'; this.air = 0; this.roll = 0; this.pitch = 0; this.yaw = 0; this.from = null; this.maxH = 0; this.touch = 0; this.settle = 0; this.vLand = 0; this.fromCeil = false; this.assistUsed = false;
+    this.state = 'ground'; this.air = 0; this.roll = 0; this.pitch = 0; this.yaw = 0; this.from = null; this.maxH = 0; this.touch = 0; this.settle = 0; this.vLand = 0; this.fromCeil = false; this.assistUsed = false; this.cleared = new Set();
   }
 
   update(dt, s) {
@@ -30,6 +31,8 @@ export class Tricks {
         this.air += dt;
         this.roll += s.ang.z * dt; this.pitch += s.ang.x * dt; this.yaw += s.ang.y * dt;
         this.maxH = Math.max(this.maxH, s.pos.y); this.hNow = s.pos.y;
+        const cx = s.pos.x + s.up.x * 0.55, cy = s.pos.y + s.up.y * 0.55, cz = s.pos.z + s.up.z * 0.55, k = LINEUP.over(cx, cz);
+        if (k >= 0 && cy > LINEUP.cars[k].top + 0.35) this.cleared.add(k);
         if (s.assist) this.assistUsed = true;
         if (this.state === 'pending' && this.air > 0.35 && (this.maxH - Math.min(this.from.y, s.pos.y) > 1.2 || this.fromCeil)) { this.state = 'air'; this.on('takeoff', { fromCeil: this.fromCeil }); }
         this.vLand = s.vel.y;
@@ -66,6 +69,8 @@ export class Tricks {
     else if (Pt >= 180) names.push(`Half ${this.pitch > 0 ? 'frontflip' : 'backflip'}`);
     if (Yw >= 180) names.push(`Spin ${Yw}`);
     if (this.fromCeil) names.unshift('Ceiling launch');
+    const nl = this.cleared.size, all = nl === LINEUP.cars.length;
+    if (nl) names.unshift(all ? 'Over the lineup' : `Over ${nl} Tesla${nl > 1 ? 's' : ''}`);
     const bull = ok ? Math.hypot(this.touchAt.x + 55, this.touchAt.z - 2) : 99;
     if (bull < 6) names.push('Bullseye');
     const rot = Math.abs(this.roll) + Math.abs(this.pitch) + Math.abs(this.yaw);
@@ -78,11 +83,12 @@ export class Tricks {
     if (this.ceilAtTakeoff > 0.2) parts.push(['Ceiling hang', `${this.ceilAtTakeoff.toFixed(1)} s`, Math.min(this.ceilAtTakeoff, 20) * 40]);
     if (this.fromCeil) parts.push(['Ceiling launch', '', 250]);
     if (bull < 6) parts.push(['Bullseye', `${bull.toFixed(1)} m`, 300 + 1200 * (1 - bull / 6)]);
+    if (nl) parts.push(['Lineup', `${nl} of ${LINEUP.cars.length}`, nl * 150 + (all ? 600 : 0)]);
     const base = parts.reduce((a, p) => a + p[2], 0);
     const mults = [];
     if (ok && qMul !== 1) mults.push([quality, qMul]);
     if (ok && pro) mults.push(['Assist off', 1.5]);
     const total = Math.round(base * qMul * (pro ? 1.5 : 1));
-    return { ok, names, quality, pro, rotDeg, air: this.air, dist, ceil: this.ceilAtTakeoff, maxH: this.maxH, total, landV: v, bull: bull < 6 ? bull : null, parts: parts.map((p) => [p[0], p[1], Math.round(p[2])]), mults };
+    return { ok, names, quality, pro, rotDeg, roll: R, lineup: nl, air: this.air, dist, ceil: this.ceilAtTakeoff, maxH: this.maxH, total, landV: v, bull: bull < 6 ? bull : null, parts: parts.map((p) => [p[0], p[1], Math.round(p[2])]), mults };
   }
 }

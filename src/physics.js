@@ -1,6 +1,7 @@
-// Roadster Jump physics world: Rapier at a fixed step, the tarmac, the curl ramp deck and simple colliders mirroring the arena props (gantry towers and bridge, grandstand tiers, LED bar riser, the parked semi, light poles, barriers, rig cases), plus ground and camera ray helpers.
+// Roadster Jump physics world: Rapier at a fixed step, the tarmac, the curl ramp deck and simple colliders mirroring the arena props (gantry towers and bridge, grandstand tiers, LED bar riser, the parked semi, light poles, barriers, rig cases, the Tesla lineup and its stage), plus ground and camera ray helpers.
 import { RAMP, buildRampColliders } from './ramp.js';
 import { GROUP, groups } from './sim/car.js';
+import { lineupBoxes } from './lineup.js';
 
 export class Physics {
   constructor(R, tuning) {
@@ -46,6 +47,7 @@ export class Physics {
     for (let i = 0; i < 7; i++) pole(-86 + i * 15, 94 + 3 * hash(i * 3.1), 9, 0.13);
     for (let i = 0; i < 4; i++) pole(-64 + i * 9, 30 + 2 * hash(i * 5.3), 1.45, 0.06);
     for (let i = 0; i < 5; i++) pole(-70 + i * 14 + 5 * hash(i * 7.7), 36 + 4 * hash(i * 2.9), 2.4, 0.06);
+    for (const [x, y, z, hx, hy, hz] of lineupBoxes()) box(x, y, z, hx, hy, hz, 0, 'lineup');
   }
 
   step() { this.world.step(this.events); }
