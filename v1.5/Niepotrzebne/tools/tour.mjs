@@ -1,0 +1,31 @@
+// Visual tour: on-foot spawn, the get-in sequence with the gullwing door, cockpit view, horizon cam, pause menu and leaderboards. node tour.mjs outDir [query]
+import {createRequire} from 'node:module';
+import fs from 'node:fs';
+const require = createRequire('/Users/jurek/openclaw/node_modules/');
+const {chromium} = require('playwright-core');
+const out = process.argv[2], qy = process.argv[3] || '';
+fs.mkdirSync(out, {recursive: true});
+const b = await chromium.launch({executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']});
+const p = await b.newPage({viewport: {width: 1280, height: 720}});
+const logs = []; p.on('pageerror', e => logs.push('err ' + e.message)); p.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') logs.push(m.type() + ' ' + m.text().slice(0, 200)); });
+await p.goto('http://127.0.0.1:8840/' + qy);
+await p.waitForFunction(() => window.__rj && window.__rj.ready, null, {timeout: 180000});
+await p.screenshot({path: `${out}/00_start.jpg`, quality: 80, type: 'jpeg'});
+await p.evaluate(() => { window.__rj.manual(true); window.__rj.play(); });
+const fr = (n, step = true) => p.evaluate(([n, step]) => { for (let i = 0; i < n; i++) window.__rj.frame(1 / 60, step); }, [n, step]);
+await fr(90);
+await p.screenshot({path: `${out}/01_foot.jpg`, quality: 80, type: 'jpeg'});
+await p.keyboard.down('KeyE'); await fr(2); await p.keyboard.up('KeyE');
+for (let i = 0; i < 6; i++) { await fr(24); await p.screenshot({path: `${out}/02_enter_${i}.jpg`, quality: 80, type: 'jpeg'}); }
+await fr(60);
+console.log('inCar', JSON.stringify(await p.evaluate(() => window.__rj.state().inCar)));
+await p.evaluate(() => window.__rj.cam('fpp')); await fr(40);
+await p.screenshot({path: `${out}/03_fpp.jpg`, quality: 80, type: 'jpeg'});
+await p.evaluate(() => window.__rj.cam('chase')); await fr(40);
+await p.screenshot({path: `${out}/04_chase.jpg`, quality: 80, type: 'jpeg'});
+await p.keyboard.down('Escape'); await fr(2); await p.keyboard.up('Escape'); await fr(4, false);
+await p.screenshot({path: `${out}/05_menu.jpg`, quality: 80, type: 'jpeg'});
+await p.click('.tabs button[data-tab="boards"]'); await new Promise(r => setTimeout(r, 6000)); await fr(2, false);
+await p.screenshot({path: `${out}/06_boards.jpg`, quality: 80, type: 'jpeg'});
+console.log(logs.slice(0, 30).join('\n'));
+await b.close();
